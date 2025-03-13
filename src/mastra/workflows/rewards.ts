@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { fetchMessagesTool } from '../tools/getMessages.js';
 import { identifyRewardsTool } from '../tools/rewards.js';
 import { getCommunityProfileTool } from '../tools/communityProfile.js';
+import { getTokensAndBadgesTool } from '../tools/getTokensAndBadges.js';
 
 // Define the workflow
 export const rewardsWorkflow = new Workflow({
@@ -27,10 +28,13 @@ const getCommunityProfileStep = new Step({
     telegram_server_id: z.string().nullable(),
     github_repos: z.array(z.string()),
     auto_rewards_enabled: z.boolean(),
-    reward_actions: z.array(z.object({
+    community_address: z.string(),
+    reward_actions: z.array(z.object({  
       type: z.string(),
       points: z.number()
-    }))
+    })),
+    created_at: z.string(),
+    updated_at: z.string()
   }),
   execute: async ({ context }) => {
     if (!getCommunityProfileTool.execute) {
@@ -45,6 +49,41 @@ const getCommunityProfileStep = new Step({
       throw new Error('Community profile not found');
     }
     return profile;
+  },
+});
+
+// Step 1a: Get tokens and badges
+const getTokensAndBadgesStep = new Step({
+  id: 'getTokensAndBadges',
+  outputSchema: z.object({
+    success: z.boolean(),
+    badges: z.array(z.object({
+      id: z.string(),
+      name: z.string(),
+      description: z.string(),
+      totalAwarded: z.string()
+    })).optional(),
+    tokens: z.array(z.object({
+      id: z.string(),
+      name: z.string()
+    })).optional(),
+    error: z.string().optional()
+  }),
+  execute: async ({ context }) => {
+    if (!getTokensAndBadgesTool.execute) {
+      throw new Error('Get tokens and badges tool not initialized');
+    }
+    
+    if (context.steps.getCommunityProfile.status !== 'success') {
+      throw new Error('Failed to get community profile');
+    }
+
+    const profile = context.steps.getCommunityProfile.output;
+    return getTokensAndBadgesTool.execute({
+      context: {
+        communityAddress: profile.community_address
+      }
+    });
   },
 });
 
@@ -152,6 +191,7 @@ const identifyRewardsStep = new Step({
 // Link the steps together
 rewardsWorkflow
   .step(getCommunityProfileStep)
+  .then(getTokensAndBadgesStep)
   .then(fetchMessagesStep)
   .then(identifyRewardsStep)
   .commit(); 
