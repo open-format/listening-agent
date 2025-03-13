@@ -9,15 +9,9 @@ const model = new ChatOpenAI({
   maxTokens: 4000,
 });
 
-// Define available badges and reward guidelines
-const AVAILABLE_BADGES = ['helper', 'builder', 'innovator', 'mentor', 'contributor'];
 const REWARD_GUIDELINES = {
   min_points: 10,
   max_points: 1000,
-  monetary_thresholds: {
-    min_value: 5,
-    max_value: 500
-  }
 };
 
 export const identifyRewardsTool = createTool({
@@ -34,8 +28,6 @@ export const identifyRewardsTool = createTool({
       evidence: z.string(),
       suggested_reward: z.object({
         points: z.number(),
-        badges: z.array(z.string()),
-        monetary_value: z.number().optional(),
         reasoning: z.string()
       })
     }))
@@ -47,7 +39,7 @@ For each meaningful contribution, provide:
 1. Who made the contribution
 2. What they contributed
 3. The impact on the community
-4. Evidence from the chat
+4. Evidence from the chat, this should be one or several exact quotes from the transcript
 5. Suggested rewards based on:
    - Contribution value and impact
    - Time/effort invested
@@ -61,11 +53,9 @@ Return the response in this exact JSON format:
       "contributor": "username",
       "description": "Clear description of contribution",
       "impact": "Specific impact on community",
-      "evidence": "Relevant quote or summary from chat",
+      "evidence": "Relevant quote or several quotes from chat",
       "suggested_reward": {
         "points": 100,
-        "badges": ["badge_name"],
-        "monetary_value": 50,
         "reasoning": "Detailed explanation of reward suggestion"
       }
     }
@@ -74,8 +64,7 @@ Return the response in this exact JSON format:
 
 Reward Guidelines:
 - Points: Scale from ${REWARD_GUIDELINES.min_points} to ${REWARD_GUIDELINES.max_points}
-- Available Badges: ${AVAILABLE_BADGES.join(', ')}
-- Monetary rewards: $${REWARD_GUIDELINES.monetary_thresholds.min_value} to $${REWARD_GUIDELINES.monetary_thresholds.max_value}
+
 
 Consider these contribution types:
 1. Technical contributions (code, documentation, tools)
@@ -102,8 +91,6 @@ ${context.transcript}`;
         evidence: string;
         suggested_reward: {
           points: number;
-          badges: string[];
-          monetary_value?: number;
           reasoning: string;
         };
       };
@@ -116,18 +103,13 @@ ${context.transcript}`;
           suggested_reward: {
             ...reward,
             points: Math.min(Math.max(reward.points, REWARD_GUIDELINES.min_points), REWARD_GUIDELINES.max_points),
-            badges: reward.badges.filter((badge: string) => AVAILABLE_BADGES.includes(badge)),
-            monetary_value: reward.monetary_value ? 
-              Math.min(Math.max(reward.monetary_value, REWARD_GUIDELINES.monetary_thresholds.min_value), 
-                REWARD_GUIDELINES.monetary_thresholds.max_value) : 
-              undefined
           }
         };
       });
 
       return result;
     } catch (error) {
-      console.error('Failed to parse AI response:', error);
+      console.error('Failed to parse AI response', error);
       return { contributions: [] };
     }
   },
