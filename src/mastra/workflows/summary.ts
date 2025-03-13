@@ -53,6 +53,9 @@ const fetchMessagesStep = new Step({
   id: 'fetchMessages',
   outputSchema: z.object({
     transcript: z.string(),
+    messageCount: z.number(),
+    uniqueUserCount: z.number(),
+    activePeriodsCount: z.number(),
   }),
   execute: async ({ context }) => {
     if (!fetchMessagesTool.execute) {
@@ -100,7 +103,10 @@ const fetchMessagesStep = new Step({
       console.error('Error in fetchMessagesStep:', error);
       // Instead of throwing, return a transcript indicating no messages
       return {
-        transcript: `No messages found. Note: ${error.message}`
+        transcript: `No messages found. Note: ${error.message}`,
+        messageCount: 0,
+        uniqueUserCount: 0,
+        activePeriodsCount: 0
       };
     }
   },

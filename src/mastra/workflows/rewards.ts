@@ -53,6 +53,9 @@ const fetchMessagesStep = new Step({
   id: 'fetchMessages',
   outputSchema: z.object({
     transcript: z.string(),
+    messageCount: z.number(),
+    uniqueUserCount: z.number(),
+    activePeriodsCount: z.number()
   }),
   execute: async ({ context }) => {
     if (!fetchMessagesTool.execute) {
@@ -106,7 +109,10 @@ const fetchMessagesStep = new Step({
     } catch (error: any) {
       console.error('Error in fetchMessagesStep:', error);
       return {
-        transcript: `No messages found. Note: ${error.message}`
+        transcript: `No messages found. Note: ${error.message}`,
+        messageCount: 0,
+        uniqueUserCount: 0,
+        activePeriodsCount: 0
       };
     }
   },
@@ -123,8 +129,6 @@ const identifyRewardsStep = new Step({
       evidence: z.string(),
       suggested_reward: z.object({
         points: z.number(),
-        badges: z.array(z.string()),
-        monetary_value: z.number().optional(),
         reasoning: z.string()
       })
     }))

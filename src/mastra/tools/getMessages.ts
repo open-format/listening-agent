@@ -18,6 +18,9 @@ export const fetchMessagesTool = createTool({
   }),
   outputSchema: z.object({
     transcript: z.string(),
+    messageCount: z.number(),
+    uniqueUserCount: z.number(),
+    activePeriodsCount: z.number(),
   }),
   execute: async ({ context }) => {
     console.log('Executing fetchMessages with context:', {
@@ -60,7 +63,12 @@ export const fetchMessagesTool = createTool({
       console.log(`Found ${messageData?.length || 0} messages`);
 
       if (!messageData || messageData.length === 0) {
-        return { transcript: "No messages found." };
+        return { 
+          transcript: "No messages found.",
+          messageCount: 0,
+          uniqueUserCount: 0,
+          activePeriodsCount: 0
+        };
       }
 
       // Fetch user details
@@ -103,7 +111,57 @@ export const fetchMessagesTool = createTool({
         })
         .join('\n');
 
-      return { transcript };
+      // Calculate active periods (conversations with messages less than 5 minutes apart)
+      const sortedMessages = [...messageData].sort((a, b) => {
+        const dateA = new Date(a.createdAt).getTime();
+        const dateB = new Date(b.createdAt).getTime();
+        return dateA - dateB;
+      });
+
+      let activePeriodsCount = 0;
+      let currentPeriodMessageCount = 0;
+      let lastMessageTime = null;
+      
+      // 5 minutes in milliseconds
+      const ACTIVE_PERIOD_THRESHOLD = 5 * 60 * 1000;
+
+      for (const message of sortedMessages) {
+        const currentMessageTime = new Date(message.createdAt).getTime();
+        
+        if (lastMessageTime === null) {
+          // First message
+          lastMessageTime = currentMessageTime;
+          currentPeriodMessageCount = 1;
+        } else {
+          const timeDifference = currentMessageTime - lastMessageTime;
+          
+          if (timeDifference <= ACTIVE_PERIOD_THRESHOLD) {
+            // Message is within threshold of previous message
+            currentPeriodMessageCount++;
+          } else {
+            // Gap is too large, check if previous period was active
+            if (currentPeriodMessageCount > 1) {
+              activePeriodsCount++;
+            }
+            // Start a new period
+            currentPeriodMessageCount = 1;
+          }
+          
+          lastMessageTime = currentMessageTime;
+        }
+      }
+      
+      // Check if the last period was active
+      if (currentPeriodMessageCount > 1) {
+        activePeriodsCount++;
+      }
+
+      return { 
+        transcript,
+        messageCount: messageData.length,
+        uniqueUserCount: userIds.length,
+        activePeriodsCount
+      };
     } catch (error: any) {
       console.error('Error processing messages:', error);
       throw new Error(`Failed to process messages: ${error.message}`);
