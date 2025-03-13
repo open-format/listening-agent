@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { fetchMessagesTool } from '../tools/getMessages.js';
 import { getCommunityProfileTool } from '../tools/communityProfile.js';
 import { generateSummary } from '../agents/summary.js';
+import { saveSummaryTool } from '../tools/saveSummary.js';
 
 // Define the workflow
 export const summaryWorkflow = new Workflow({
@@ -133,9 +134,56 @@ const generateSummaryStep = new Step({
   },
 });
 
+// Step 4: Save the summary to the database
+const saveSummaryStep = new Step({
+  id: 'saveSummary',
+  outputSchema: z.object({
+    success: z.boolean(),
+    summaryId: z.string().uuid().optional(),
+    error: z.string().optional(),
+  }),
+  execute: async ({ context }) => {
+    if (context.steps.generateSummary.status !== 'success') {
+      throw new Error('Failed to generate summary');
+    }
+    
+    if (context.steps.fetchMessages.status !== 'success') {
+      throw new Error('Failed to fetch messages');
+    }
+
+    if (!saveSummaryTool.execute) {
+      throw new Error('Save summary tool not initialized');
+    }
+
+    // Get the start and end dates
+    const startDate = typeof context.triggerData.startDate === 'object' 
+      ? context.triggerData.startDate.toISOString()
+      : context.triggerData.startDate;
+    
+    const endDate = typeof context.triggerData.endDate === 'object'
+      ? context.triggerData.endDate.toISOString()
+      : context.triggerData.endDate;
+
+    return saveSummaryTool.execute({
+      context: {
+        communityId: context.triggerData.communityId,
+        summary: context.steps.generateSummary.output.summary,
+        startDate,
+        endDate,
+        platform: context.triggerData.platform.toLowerCase(),
+        messageCount: context.steps.fetchMessages.output.messageCount,
+        uniqueUserCount: context.steps.fetchMessages.output.uniqueUserCount,
+        activePeriodsCount: context.steps.fetchMessages.output.activePeriodsCount,
+        summarizationResult: context.steps.generateSummary.output.summarizationResult,
+      }
+    });
+  },
+});
+
 // Link the steps together
 summaryWorkflow
   .step(getCommunityProfileStep)
   .then(fetchMessagesStep)
   .then(generateSummaryStep)
+  .then(saveSummaryStep)
   .commit(); 
