@@ -1,8 +1,8 @@
 import { Workflow, Step } from '@mastra/core/workflows';
 import { z } from 'zod';
 import { fetchMessagesTool } from '../tools/getMessages.js';
-import { communitySummaryTool } from '../tools/summary.js';
 import { getCommunityProfileTool } from '../tools/communityProfile.js';
+import { generateSummary } from '../agents/summary.js';
 
 // Define the workflow
 export const summaryWorkflow = new Workflow({
@@ -112,25 +112,24 @@ const fetchMessagesStep = new Step({
   },
 });
 
-// Step 3: Generate summary from transcript
+// Step 3: Generate summary from transcript using the agent
 const generateSummaryStep = new Step({
   id: 'generateSummary',
   outputSchema: z.object({
     summary: z.string(),
+    summarizationResult: z.any(),
   }),
   execute: async ({ context }) => {
-    if (!communitySummaryTool.execute) {
-      throw new Error('Summary tool not initialized');
-    }
     if (context.steps.fetchMessages.status !== 'success') {
       throw new Error('Failed to fetch messages');
     }
 
-    return communitySummaryTool.execute({
-      context: {
-        transcript: context.steps.fetchMessages.output.transcript,
-      }
-    });
+    const transcript = context.steps.fetchMessages.output.transcript;
+    
+    // Use the agent to generate the summary
+    const result = await generateSummary(transcript);
+    
+    return result;
   },
 });
 
