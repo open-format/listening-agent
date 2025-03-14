@@ -11,7 +11,7 @@ export const summaryAgent = new Agent({
   2. Important decisions or conclusions reached
   3. Notable community interactions or events
   
-  Keep summaries clear, informative, and to the point. Each line should convey a distinct and meaningful insight.`,
+  Keep summaries clear, informative, interesting and to the point. Each line should convey a distinct and meaningful insight.`,
   model: openai("gpt-4o"),
   evals: {
     summarization: new SummarizationMetric(openai("gpt-4o")),
@@ -20,7 +20,7 @@ export const summaryAgent = new Agent({
 
 // Function to generate a summary using the agent
 export async function generateSummary(transcript: string) {
-  const prompt = `Analyze this conversation transcript and provide a concise and informative 6-10 line summary of the key community activities and discussions.
+  const prompt = `Analyze this conversation transcript and provide a concise, interesting and informative 6-10 line summary of the key community activities and discussions.
 
 Chat transcript:
 ${transcript}`;
