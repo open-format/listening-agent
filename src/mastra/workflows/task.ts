@@ -216,13 +216,12 @@ const identifyTasksStep = new Step({
         'Governance', 'Operations', 'Moderation',
         'Education', 'Onboarding', 'Mentoring'
       ]),
+      task_scope: z.enum(['community', 'internal']),
+      urgency_score: z.number().min(0).max(100),
+      impact_score: z.number().min(0).max(100),
       priority_score: z.number().min(0).max(100),
       priority_reasoning: z.string(),
-      requirements: z.object({
-        role: z.enum(['team', 'builder', 'ambassador', 'member']),
-        access_level: z.enum(['internal', 'trusted', 'public']),
-        experience_level: z.enum(['beginner', 'intermediate', 'advanced'])
-      }),
+      reward_points: z.number().min(0),
       isNewTask: z.boolean(),
       taskToUpdateId: z.string().nullable()
     }))
@@ -261,11 +260,13 @@ const identifyTasksStep = new Step({
               required_badges: task.required_badges,
               evidence: task.evidence,
               type: task.type,
-              role: task.requirements.role,
-              access_level: task.requirements.access_level,
-              experience_level: task.requirements.experience_level,
-              status: 'open',
+              task_scope: task.task_scope,
+              urgency_score: task.urgency_score,
+              impact_score: task.impact_score,
               priority_score: task.priority_score,
+              priority_reasoning: task.priority_reasoning,
+              reward_points: task.reward_points,
+              status: 'open',
               isNewTask: task.isNewTask,
               taskToUpdateId: task.taskToUpdateId
             }

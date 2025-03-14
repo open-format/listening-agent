@@ -112,36 +112,62 @@ Return the response in this exact JSON format:
       "required_badges": ["badge_id_1", "badge_id_2"],
       "evidence": ["messageId1", "messageId2", "messageId3"],
       "type": "Event",
-      "priority_score": 75,
-      "priority_reasoning": "High priority due to X messages mentioning urgency, Y community members supporting, and upcoming deadline",
-      "requirements": {
-        "role": "member",
-        "access_level": "public",
-        "experience_level": "beginner"
-      },
+      "task_scope": "community",
+      "urgency_score": 75,
+      "impact_score": 80,
+      "priority_score": 78,
+      "priority_reasoning": "High priority due to X messages mentioning urgency, Y community members supporting",
+      "reward_points": 1000,
       "isNewTask": true,
       "taskToUpdateId": null
     }
   ]
 }
 
-Priority Score Guidelines:
-90-100: CRITICAL - Immediate attention required, blocking issues, or severe community impact
-70-89: HIGH - Important tasks with significant impact but not immediately critical
-50-69: MEDIUM - Standard priority tasks with clear value but no immediate urgency
-30-49: LOW - Tasks that would be beneficial but aren't time-sensitive
-0-29: BACKLOG - Nice-to-have improvements or long-term ideas
+Scoring Guidelines:
+1. Urgency Score (0-100):
+   - How time-sensitive is the task?
+   - Are there deadlines or dependencies?
+   - Is it blocking other work?
+   - 80-100: Critical blockers or immediate deadlines (next 24-48 hours)
+   - 60-79: Important near-term tasks (this week)
+   - 40-59: Standard timeline (this month)
+   - 20-39: Long-term improvements (next few months)
+   - 0-19: Nice-to-have features (no timeline pressure)
 
-When calculating priority scores, consider:
-- Start with a base score in the 30-50 range for most tasks
-- Add points for:
-  * Urgency (+10-20)
-  * Number of community members affected (+5-15)
-  * Frequency of mentions (+5-10)
-  * Supporting evidence (+2 per piece of evidence)
-  * Multiple community members requesting (+5-10)
-- Only use scores 90+ for truly critical/blocking issues
-- Most new tasks should fall in the 30-70 range initially
+2. Impact Score (0-100):
+   - How many community members benefit?
+   - Does it affect core functionality?
+   - Will it improve engagement/retention?
+   - 80-100: Core platform functionality or entire community affected
+   - 60-79: Major feature or large user segment affected
+   - 40-59: Moderate improvement for regular users
+   - 20-39: Minor enhancement or small user segment
+   - 0-19: Minimal impact or very specific use case
+
+3. Priority Score:
+   - Base score = (Impact * 0.6) + (Urgency * 0.4)
+   - Most tasks should fall in 30-60 range
+   - Adjust final score by:
+     * Number of mentions (+1-3 points per mention)
+     * Community support (+1-5 points)
+     * Strategic alignment (+1-5 points)
+   - Scores above 75 should be rare and justify critical nature
+
+4. Reward Points:
+   - Simple tasks (1-2 hours): 100-300 points
+   - Small tasks (2-4 hours): 300-500 points
+   - Medium tasks (4-8 hours): 500-1000 points
+   - Large tasks (multiple days): 1000-2000 points
+   - Complex projects (weeks+): 2000-3000 points
+   - Adjust based on:
+     * Required expertise (-25% to +25%)
+     * Strategic importance (+10% to +30%)
+     * Time sensitivity (+10% to +20%)
+
+Task Scope:
+- community: Tasks that can be completed by community members
+- internal: Tasks that require team access or internal knowledge
 
 IMPORTANT: 
 - role MUST be one of: team, builder, ambassador, member
@@ -161,6 +187,10 @@ IMPORTANT:
 - When updating an existing task, use its ID (provided in parentheses) as taskToUpdateId
 - taskToUpdateId must be the exact ID of the task being updated, not its name
 - Set isNewTask to false when providing a taskToUpdateId
+- Be conservative with scores - most tasks should be medium priority
+- Only use high scores (75+) for genuinely critical/blocking issues
+- Reward points should reflect actual effort required, not perceived importance
+- Consider the community's typical point values when setting rewards
 
 Chat transcript:
 ${transcript}`;

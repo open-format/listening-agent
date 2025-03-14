@@ -54,11 +54,13 @@ export const saveTaskTool = createTool({
       'Governance', 'Operations', 'Moderation',
       'Education', 'Onboarding', 'Mentoring'
     ]),
-    role: z.enum(['team', 'builder', 'ambassador', 'member']),
-    access_level: z.enum(['internal', 'trusted', 'public']),
-    experience_level: z.enum(['beginner', 'intermediate', 'advanced']),
-    status: z.string(),
+    task_scope: z.enum(['community', 'internal']),
+    urgency_score: z.number().min(0).max(100),
+    impact_score: z.number().min(0).max(100),
     priority_score: z.number().min(0).max(100),
+    priority_reasoning: z.string(),
+    reward_points: z.number().min(0),
+    status: z.string(),
     isNewTask: z.boolean(),
     taskToUpdateId: z.string().nullable()
   }),
@@ -99,11 +101,13 @@ export const saveTaskTool = createTool({
           required_badges: context.required_badges,
           evidence: context.evidence,
           type: context.type,
-          role: context.role,
-          access_level: context.access_level,
-          experience_level: context.experience_level,
-          status: context.status,
+          task_scope: context.task_scope,
+          urgency_score: context.urgency_score,
+          impact_score: context.impact_score,
           priority_score: updatedPriority,
+          priority_reasoning: context.priority_reasoning,
+          reward_points: context.reward_points,
+          status: context.status,
           updated_at: now
         })
         .eq('id', context.taskToUpdateId);
@@ -123,11 +127,13 @@ export const saveTaskTool = createTool({
           required_badges: context.required_badges,
           evidence: context.evidence,
           type: context.type,
-          role: context.role,
-          access_level: context.access_level,
-          experience_level: context.experience_level,
-          status: context.status,
+          task_scope: context.task_scope,
+          urgency_score: context.urgency_score,
+          impact_score: context.impact_score,
           priority_score: context.priority_score,
+          priority_reasoning: context.priority_reasoning,
+          reward_points: context.reward_points,
+          status: context.status,
           created_at: now,
           updated_at: now
         });
