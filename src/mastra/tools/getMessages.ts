@@ -23,12 +23,6 @@ export const fetchMessagesTool = createTool({
     activePeriodsCount: z.number(),
   }),
   execute: async ({ context }) => {
-    console.log('Executing fetchMessages with context:', {
-      startDate: context.startDate,
-      endDate: context.endDate,
-      platform: context.platform,
-      serverId: context.serverId
-    });
 
     // Parse the date strings into Date objects
     const startDate = new Date(context.startDate);
@@ -60,8 +54,6 @@ export const fetchMessagesTool = createTool({
         throw messageError;
       }
 
-      console.log(`Found ${messageData?.length || 0} messages`);
-
       if (!messageData || messageData.length === 0) {
         return { 
           transcript: "No messages found.",
@@ -73,7 +65,6 @@ export const fetchMessagesTool = createTool({
 
       // Fetch user details
       const userIds = [...new Set(messageData.map(m => m.userId))];
-      console.log(`Found ${userIds.length} unique users`);
 
       const { data: userData, error: userError } = await supabase
         .from('accounts')
