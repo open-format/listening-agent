@@ -6,6 +6,19 @@ import { getTokensAndBadgesTool } from '../tools/getTokensAndBadges.js';
 import { getWalletAddressTool } from '../tools/getWalletAddress.js';
 import { identifyRewards } from '../agents/rewards.js';
 import { rewardTokenTool } from '../tools/rewardToken.js';
+import { ThirdwebStorage } from "@thirdweb-dev/storage";
+import { storePendingRewardTool } from '../tools/storePendingReward.js';
+
+const storage = new ThirdwebStorage({
+  secretKey: process.env.THIRDWEB_SECRET,
+});
+
+async function uploadJSONToIPFS(data: Record<string, unknown>) {
+  const ipfsHash = await storage.upload(data, {
+    uploadWithoutDirectory: true,
+  });
+  return ipfsHash;
+}
 
 // Define the workflow
 export const rewardsWorkflow = new Workflow({
@@ -129,15 +142,6 @@ const fetchMessagesStep = new Step({
       const endDate = typeof context.triggerData.endDate === 'object'
         ? context.triggerData.endDate.toISOString()
         : context.triggerData.endDate;
-
-      console.log('Fetching messages with params:', {
-        startDate,
-        endDate,
-        platform: context.triggerData.platform.toLowerCase(),
-        serverId,
-        serverIdType: typeof serverId,
-        platformCase: context.triggerData.platform
-      });
 
       return fetchMessagesTool.execute({
         context: {
@@ -275,62 +279,135 @@ const rewardTokensStep = new Step({
     const tokensAndBadges = context.steps.getTokensAndBadges.output;
     const { contributorsWithWallets } = context.steps.getWalletAddresses.output;
 
-    // Skip if auto rewards are disabled
-    if (!profile.auto_rewards_enabled) {
-      return { rewards: [], messages: [] };
-    }
-
     // Get the first available token address
     const pointsTokenAddress = tokensAndBadges.tokens?.[0]?.id;
     if (!pointsTokenAddress) {
       throw new Error('No token address available for rewards');
     }
 
-    // Process rewards for each contributor with a valid wallet
+    // Process rewards for each contributor
     const rewards = [];
-    const eligibleContributors = contributorsWithWallets
-      .filter((contributor: { walletAddress: string | null; error?: string }) => contributor.walletAddress && !contributor.error);
-
-    for (const contributor of eligibleContributors) {
+    const messages = [];
+    
+    for (const contributor of contributorsWithWallets) {
       try {
+        // Generate IPFS hash first as we'll need it for both immediate and pending rewards
+        const ipfsHash = await uploadJSONToIPFS({
+          description: contributor.description,
+          impact: contributor.impact,
+          evidence: contributor.evidence,
+          reasoning: contributor.suggested_reward.reasoning,
+          platform: context.triggerData.platform,
+          auto_rewards: profile.auto_rewards_enabled
+        });
+
+        // Branch 1: Store as pending if no wallet address
+        if (!contributor.walletAddress) {
+          if (!storePendingRewardTool.execute) {
+            throw new Error('Store pending reward tool not initialized');
+          }
+          
+          const pendingResult = await storePendingRewardTool.execute({
+            context: {
+              communityId: profile.id,
+              contributor: contributor.contributor,
+              walletAddress: null,
+              rewardId: contributor.rewardId,
+              points: contributor.suggested_reward.points,
+              pointsTokenAddress,
+              communityAddress: profile.community_address,
+              ipfsHash,
+              isAutoReward: profile.auto_rewards_enabled,
+              noWalletAddress: true
+            }
+          });
+
+          rewards.push({
+            contributor: contributor.contributor,
+            walletAddress: null,
+            points: contributor.suggested_reward.points,
+            success: pendingResult.success,
+            error: pendingResult.error
+          });
+
+          messages.push(`Stored pending reward for ${contributor.contributor} (no wallet address)`);
+          continue;
+        }
+
+        // Branch 2: Store as pending if auto-rewards disabled
+        if (!profile.auto_rewards_enabled) {
+          if (!storePendingRewardTool.execute) {
+            throw new Error('Store pending reward tool not initialized');
+          }
+          
+          const pendingResult = await storePendingRewardTool.execute({
+            context: {
+              communityId: profile.id,
+              contributor: contributor.contributor,
+              walletAddress: contributor.walletAddress,
+              rewardId: contributor.rewardId,
+              points: contributor.suggested_reward.points,
+              pointsTokenAddress,
+              communityAddress: profile.community_address,
+              ipfsHash,
+              isAutoReward: false,
+              noWalletAddress: false
+            }
+          });
+
+          rewards.push({
+            contributor: contributor.contributor,
+            walletAddress: contributor.walletAddress,
+            points: contributor.suggested_reward.points,
+            success: pendingResult.success,
+            error: pendingResult.error
+          });
+
+          messages.push(`Stored pending reward for ${contributor.contributor} (manual approval required)`);
+          continue;
+        }
+
+        // Branch 3: Process immediate reward if has wallet and auto-rewards enabled
         if (!rewardTokenTool.execute) {
           throw new Error('Reward token tool not initialized');
         }
+
         const result = await rewardTokenTool.execute({
           context: {
-            receiver: contributor.walletAddress!,
+            receiver: contributor.walletAddress,
             rewardId: contributor.rewardId,
             points: contributor.suggested_reward.points,
             pointsTokenAddress,
             communityAddress: profile.community_address,
-            ipfsHash: `ipfs://`
+            ipfsHash
           }
         });
 
         rewards.push({
           contributor: contributor.contributor,
-          walletAddress: contributor.walletAddress!,
+          walletAddress: contributor.walletAddress,
           points: contributor.suggested_reward.points,
           ...result
         });
+
+        if (result.success) {
+          messages.push(`${contributor.contributor} was awarded ${contributor.suggested_reward.points} points - ${result.transactionHash}`);
+        } else {
+          messages.push(`Failed to reward ${contributor.contributor}: ${result.error}`);
+        }
+
       } catch (error: any) {
+        console.error('Error processing reward:', error);
         rewards.push({
           contributor: contributor.contributor,
-          walletAddress: contributor.walletAddress!,
+          walletAddress: contributor.walletAddress || null,
           points: contributor.suggested_reward.points,
           success: false,
-          transactionHash: undefined,
           error: error.message
         });
+        messages.push(`Error processing reward for ${contributor.contributor}: ${error.message}`);
       }
     }
-
-    const messages = rewards.map(reward => {
-      if (reward.success && reward.transactionHash) {
-        return `${reward.contributor} was awarded ${reward.points} points - ${reward.transactionHash}`;
-      }
-      return `Failed to reward ${reward.contributor}: ${reward.error}`;
-    });
 
     return { rewards, messages };
   }
