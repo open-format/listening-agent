@@ -6,3 +6,4 @@ export { getWalletAddressTool } from './getWalletAddress.js';
 export { rewardTokenTool } from './rewardToken.js';
 export { storePendingRewardTool } from './storePendingReward.js';
 export { getCommunityProfileTool } from './communityProfile.js';
+export { getRewardsTool } from './getRewards.js';
