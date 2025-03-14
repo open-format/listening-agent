@@ -5,6 +5,7 @@ import { getCommunityProfileTool } from '../tools/communityProfile.js';
 import { getTokensAndBadgesTool } from '../tools/getTokensAndBadges.js';
 import { getWalletAddressTool } from '../tools/getWalletAddress.js';
 import { identifyRewards } from '../agents/rewards.js';
+import { rewardTokenTool } from '../tools/rewardToken.js';
 
 // Define the workflow
 export const rewardsWorkflow = new Workflow({
@@ -191,6 +192,7 @@ const getWalletAddressesStep = new Step({
       contributor: z.string(),
       description: z.string(),
       impact: z.string(),
+      rewardId: z.string().max(32),
       evidence: z.string(),
       suggested_reward: z.object({
         points: z.number(),
@@ -220,6 +222,7 @@ const getWalletAddressesStep = new Step({
         description: string;
         impact: string;
         evidence: string;
+        rewardId: string;
         suggested_reward: {
           points: number;
           reasoning: string;
@@ -247,6 +250,92 @@ const getWalletAddressesStep = new Step({
   }
 });
 
+// Step 5: Reward tokens to eligible contributors
+const rewardTokensStep = new Step({
+  id: 'rewardTokens',
+  outputSchema: z.object({
+    rewards: z.array(z.object({
+      contributor: z.string(),
+      walletAddress: z.string(),
+      points: z.number(),
+      success: z.boolean(),
+      transactionHash: z.string().optional(),
+      error: z.string().optional()
+    })),
+    messages: z.array(z.string())
+  }),
+  execute: async ({ context }) => {
+    if (context.steps.getCommunityProfile.status !== 'success' ||
+        context.steps.getTokensAndBadges.status !== 'success' ||
+        context.steps.getWalletAddresses.status !== 'success') {
+      throw new Error('Required steps not completed successfully');
+    }
+
+    const profile = context.steps.getCommunityProfile.output;
+    const tokensAndBadges = context.steps.getTokensAndBadges.output;
+    const { contributorsWithWallets } = context.steps.getWalletAddresses.output;
+
+    // Skip if auto rewards are disabled
+    if (!profile.auto_rewards_enabled) {
+      return { rewards: [], messages: [] };
+    }
+
+    // Get the first available token address
+    const pointsTokenAddress = tokensAndBadges.tokens?.[0]?.id;
+    if (!pointsTokenAddress) {
+      throw new Error('No token address available for rewards');
+    }
+
+    // Process rewards for each contributor with a valid wallet
+    const rewards = [];
+    const eligibleContributors = contributorsWithWallets
+      .filter((contributor: { walletAddress: string | null; error?: string }) => contributor.walletAddress && !contributor.error);
+
+    for (const contributor of eligibleContributors) {
+      try {
+        if (!rewardTokenTool.execute) {
+          throw new Error('Reward token tool not initialized');
+        }
+        const result = await rewardTokenTool.execute({
+          context: {
+            receiver: contributor.walletAddress!,
+            rewardId: contributor.rewardId,
+            points: contributor.suggested_reward.points,
+            pointsTokenAddress,
+            communityAddress: profile.community_address,
+            ipfsHash: `ipfs://`
+          }
+        });
+
+        rewards.push({
+          contributor: contributor.contributor,
+          walletAddress: contributor.walletAddress!,
+          points: contributor.suggested_reward.points,
+          ...result
+        });
+      } catch (error: any) {
+        rewards.push({
+          contributor: contributor.contributor,
+          walletAddress: contributor.walletAddress!,
+          points: contributor.suggested_reward.points,
+          success: false,
+          transactionHash: undefined,
+          error: error.message
+        });
+      }
+    }
+
+    const messages = rewards.map(reward => {
+      if (reward.success && reward.transactionHash) {
+        return `${reward.contributor} was awarded ${reward.points} points - ${reward.transactionHash}`;
+      }
+      return `Failed to reward ${reward.contributor}: ${reward.error}`;
+    });
+
+    return { rewards, messages };
+  }
+});
+
 // Link the steps together
 rewardsWorkflow
   .step(getCommunityProfileStep)
@@ -254,4 +343,5 @@ rewardsWorkflow
   .then(fetchMessagesStep)
   .then(identifyRewardsStep)
   .then(getWalletAddressesStep)
+  .then(rewardTokensStep)
   .commit(); 
