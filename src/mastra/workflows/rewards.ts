@@ -166,7 +166,7 @@ const identifyRewardsStep = new Step({
       contributor: z.string(),
       description: z.string(),
       impact: z.string(),
-      evidence: z.string(),
+      evidence: z.array(z.string()),
       rewardId: z.string().max(32),
       suggested_reward: z.object({
         points: z.number(),
@@ -192,7 +192,7 @@ const getWalletAddressesStep = new Step({
       description: z.string(),
       impact: z.string(),
       rewardId: z.string().max(32),
-      evidence: z.string(),
+      evidence: z.array(z.string()),
       suggested_reward: z.object({
         points: z.number(),
         reasoning: z.string()
@@ -220,7 +220,7 @@ const getWalletAddressesStep = new Step({
         contributor: string;
         description: string;
         impact: string;
-        evidence: string;
+        evidence: string[];
         rewardId: string;
         suggested_reward: {
           points: number;

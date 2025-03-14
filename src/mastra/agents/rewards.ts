@@ -16,7 +16,7 @@ export const rewardsAgent = new Agent({
   - Clearly identify the contributor
   - Describe their specific contribution
   - Explain the impact on the community
-  - Provide evidence from the chat
+  - Collect ALL relevant message IDs as evidence
   - Suggest appropriate reward points (10-1000) based on value and impact`,
   model: openai("gpt-4o"),
 });
@@ -29,7 +29,7 @@ For each meaningful contribution, provide:
 1. Who made the contribution
 2. What they contributed
 3. The impact on the community
-4. Evidence from the chat (exact quotes)
+4. Evidence: an array of message IDs that prove this contribution (extract messageId from each relevant message)
 5. A short kebab-case rewardId that describes the contribution (max 32 chars)
 6. Suggested rewards (10-1000 points) based on:
    - Contribution value and impact
@@ -44,7 +44,7 @@ Return the response in this exact JSON format:
       "contributor": "username",
       "description": "Clear description of contribution",
       "impact": "Specific impact on community",
-      "evidence": "Relevant quote or several quotes from chat",
+      "evidence": ["messageId1", "messageId2", "messageId3"],
       "rewardId": "technical-documentation-update",
       "suggested_reward": {
         "points": 100,
@@ -57,7 +57,8 @@ Return the response in this exact JSON format:
 Remember:
 - rewardId must be in kebab-case (lowercase with hyphens)
 - rewardId should be descriptive but under 32 characters
-- rewardId should reflect the type and nature of the contribution
+- evidence must be an array of message IDs extracted from the transcript
+- Include ALL relevant message IDs that support the contribution
 
 Chat transcript:
 ${transcript}`;

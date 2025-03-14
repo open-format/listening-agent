@@ -193,7 +193,7 @@ const identifyTasksStep = new Step({
       name: z.string(),
       description: z.string(),
       required_badges: z.array(z.string()),
-      evidence: z.string(),
+      evidence: z.array(z.string()),
       type: z.enum(['Feature', 'Documentation', 'Support', 'Infrastructure']),
       requirements: z.object({
         role: z.enum(['team', 'builder', 'ambassador', 'member']),

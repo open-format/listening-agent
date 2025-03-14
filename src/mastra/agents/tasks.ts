@@ -56,7 +56,7 @@ For each task, provide:
 1. A clear name (max 20 chars)
 2. A concise description
 3. Required badge or badges (MUST be badge IDs from the available badges list)
-4. Evidence from the chat that supports creating this task
+4. Evidence: an array of message IDs that support this task (extract messageId from each relevant message)
 5. Task type (Feature/Documentation/Support/Infrastructure)
 6. Requirements including:
    - role (MUST be one of: team, builder, ambassador, member)
@@ -70,7 +70,7 @@ Return the response in this exact JSON format:
       "name": "Short Task Name",
       "description": "Task description",
       "required_badges": ["badge_id_1", "badge_id_2"],
-      "evidence": "Evidence from chat",
+      "evidence": ["messageId1", "messageId2", "messageId3"],
       "type": "Feature",
       "requirements": {
         "role": "member",
@@ -86,6 +86,8 @@ IMPORTANT:
 - name must be 20 characters or less
 - type must be one of: Feature, Documentation, Support, Infrastructure
 - required_badges must ONLY use IDs from the available badges list
+- evidence must be an array of message IDs extracted from the transcript
+- Include ALL relevant message IDs that support the task
 - DO NOT recreate existing tasks, instead add new evidence to them
 
 Chat transcript:

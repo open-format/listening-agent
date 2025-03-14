@@ -87,7 +87,6 @@ export const fetchMessagesTool = createTool({
           const username = userMap[memory.userId] || 'Unknown User';
           let datetime;
           try {
-            // Use the raw createdAt value directly
             datetime = memory.createdAt;
           } catch (error) {
             console.warn('Invalid date:', memory.createdAt);
@@ -98,7 +97,7 @@ export const fetchMessagesTool = createTool({
             ? `#${memory.content.url.split('/')[5]}` 
             : `${memory.content.thread_id || 'Unknown Channel'}`;
           
-          return `[${datetime}] ${platform}/${channelInfo} ${username}: ${memory.content.text}`;
+          return `[${datetime}] ${platform}/${channelInfo} ${username}: ${memory.content.text} (messageId: ${memory.id})`;
         })
         .join('\n');
 
