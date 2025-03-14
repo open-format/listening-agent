@@ -28,12 +28,10 @@ export const fetchTasksTool = createTool({
     }))
   }),
   execute: async ({ context }) => {
-    let query = supabase
+    const { data, error } = await supabase
       .from('tasks')
       .select('name, description')
-      .eq('community_id', context.communityId)
-
-    const { data, error } = await query;
+      .eq('community_id', context.communityId);
 
     if (error) {
       console.error('Failed to fetch tasks:', error);
@@ -41,6 +39,50 @@ export const fetchTasksTool = createTool({
     }
 
     return { tasks: data || [] };
+  }
+});
+
+export const saveTaskTool = createTool({
+  id: 'save-task',
+  description: 'Save a new task to the database',
+  inputSchema: z.object({
+    communityId: z.string().uuid(),
+    name: z.string(),
+    description: z.string(),
+    required_skills: z.array(z.string()),
+    evidence: z.string(),
+    type: z.enum(['Feature', 'Documentation', 'Support', 'Infrastructure']),
+    role: z.enum(['team', 'builder', 'ambassador', 'member']),
+    access_level: z.enum(['internal', 'trusted', 'public']),
+    experience_level: z.enum(['beginner', 'intermediate', 'advanced']),
+    status: z.string()
+  }),
+  outputSchema: z.object({
+    success: z.boolean(),
+    error: z.string().optional()
+  }),
+  execute: async ({ context }) => {
+    const { error } = await supabase
+      .from('tasks')
+      .insert({
+        community_id: context.communityId,
+        name: context.name,
+        description: context.description,
+        required_skills: context.required_skills,
+        evidence: context.evidence,
+        type: context.type,
+        role: context.role,
+        access_level: context.access_level,
+        experience_level: context.experience_level,
+        status: context.status
+      });
+
+    if (error) {
+      console.error('Failed to save task:', error);
+      return { success: false, error: error.message };
+    }
+
+    return { success: true };
   }
 });
 

@@ -1,7 +1,7 @@
 import { Workflow, Step } from '@mastra/core/workflows';
 import { z } from 'zod';
-import { fetchMessagesTool, taskIdentificationTool, fetchTasksTool } from '../tools/index.js';
-import { getCommunityProfileTool } from '../tools/communityProfile.js';
+import { fetchTasksTool, saveTaskTool, getCommunityProfileTool, fetchMessagesTool } from '../tools/index.js';
+import { identifyTasks } from '../agents/tasks.js';
 
 // Define the workflow
 export const taskWorkflow = new Workflow({
@@ -143,7 +143,7 @@ const fetchTasksStep = new Step({
   },
 });
 
-// Step 4: Identify tasks from transcript
+// Step 4: Identify tasks from transcript using the agent
 const identifyTasksStep = new Step({
   id: 'identifyTasks',
   outputSchema: z.object({
@@ -161,9 +161,6 @@ const identifyTasksStep = new Step({
     }))
   }),
   execute: async ({ context }) => {
-    if (!taskIdentificationTool.execute) {
-      throw new Error('Task identification tool not initialized');
-    }
     if (context.steps.fetchMessages.status !== 'success') {
       throw new Error('Failed to fetch messages');
     }
@@ -171,30 +168,39 @@ const identifyTasksStep = new Step({
       throw new Error('Failed to fetch existing tasks');
     }
 
-    if (context.steps.getCommunityProfile.status !== 'success') {
-      throw new Error('Failed to get community profile');
-    }
+    const tasks = await identifyTasks(
+      context.steps.fetchMessages.output.transcript,
+      context.steps.fetchTasks.output.tasks
+    );
 
-    const profile = context.steps.getCommunityProfile.output;
-    let serverId;
-    
-    if (context.triggerData.platform.toLowerCase() === 'discord') {
-      serverId = profile.discord_server_id;
-    } else {
-      serverId = profile.telegram_server_id;
-    }
-
-    if (!serverId) {
-      throw new Error(`No ${context.triggerData.platform} server ID found for this community`);
-    }
-
-    return taskIdentificationTool.execute({
-      context: {
-        transcript: context.steps.fetchMessages.output.transcript,
-        communityId: context.triggerData.communityId,
-        existingTasks: context.steps.fetchTasks.output.tasks,
+    // Save tasks to database using saveTaskTool
+    if (tasks.tasks && tasks.tasks.length > 0) {
+      try {
+        for (const task of tasks.tasks) {
+          if (!saveTaskTool.execute) {
+            throw new Error('Save task tool not initialized');
+          }
+          await saveTaskTool.execute({
+            context: {
+              communityId: context.triggerData.communityId,
+              name: task.name,
+              description: task.description,
+              required_skills: task.required_skills,
+              evidence: task.evidence,
+              type: task.type,
+              role: task.requirements.role,
+              access_level: task.requirements.access_level,
+              experience_level: task.requirements.experience_level,
+              status: 'open'
+            }
+          });
+        }
+      } catch (error) {
+        console.error('Error saving tasks:', error);
       }
-    });
+    }
+
+    return tasks;
   },
 });
 
