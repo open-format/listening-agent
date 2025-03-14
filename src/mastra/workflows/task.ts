@@ -194,12 +194,23 @@ const identifyTasksStep = new Step({
       description: z.string(),
       required_badges: z.array(z.string()),
       evidence: z.array(z.string()),
-      type: z.enum(['Feature', 'Documentation', 'Support', 'Infrastructure']),
+      type: z.enum([
+        'Feature', 'Documentation', 'Support', 'Infrastructure',
+        'Event', 'Workshop', 'Meetup',
+        'Content', 'Translation', 'Marketing', 'Design',
+        'Research', 'Analysis', 'Strategy',
+        'Governance', 'Operations', 'Moderation',
+        'Education', 'Onboarding', 'Mentoring'
+      ]),
+      priority_score: z.number().min(0).max(100),
+      priority_reasoning: z.string(),
       requirements: z.object({
         role: z.enum(['team', 'builder', 'ambassador', 'member']),
         access_level: z.enum(['internal', 'trusted', 'public']),
         experience_level: z.enum(['beginner', 'intermediate', 'advanced'])
-      })
+      }),
+      isNewTask: z.boolean(),
+      taskToUpdateId: z.string().nullable()
     }))
   }),
   execute: async ({ context }) => {
@@ -237,7 +248,10 @@ const identifyTasksStep = new Step({
               role: task.requirements.role,
               access_level: task.requirements.access_level,
               experience_level: task.requirements.experience_level,
-              status: 'open'
+              status: 'open',
+              priority_score: task.priority_score,
+              isNewTask: task.isNewTask,
+              taskToUpdateId: task.taskToUpdateId
             }
           });
         }

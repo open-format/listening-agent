@@ -1,19 +1,11 @@
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
-import { ChatOpenAI } from "@langchain/openai";
-import { HumanMessage } from "@langchain/core/messages";
 import { createClient } from '@supabase/supabase-js';
 
 const supabase = createClient(
   process.env.BRITTNEY_SUPABASE_URL!,
   process.env.BRITTNEY_SUPABASE_KEY!
 );
-
-const model = new ChatOpenAI({
-  modelName: "gpt-4o",
-  temperature: 0.2,
-  maxTokens: 4000,
-});
 
 export const fetchTasksTool = createTool({
   id: 'fetch-tasks',
@@ -23,14 +15,17 @@ export const fetchTasksTool = createTool({
   }),
   outputSchema: z.object({
     tasks: z.array(z.object({
+      id: z.string(),
       name: z.string(),
       description: z.string(),
+      priority_score: z.number().optional(),
+      evidence: z.array(z.string()).optional()
     }))
   }),
   execute: async ({ context }) => {
     const { data, error } = await supabase
       .from('tasks')
-      .select('name, description')
+      .select('id, name, description, priority_score, evidence')
       .eq('community_id', context.communityId);
 
     if (error) {
@@ -44,185 +39,105 @@ export const fetchTasksTool = createTool({
 
 export const saveTaskTool = createTool({
   id: 'save-task',
-  description: 'Save a new task to the database',
+  description: 'Save a new task to the database or update existing one',
   inputSchema: z.object({
     communityId: z.string().uuid(),
     name: z.string(),
     description: z.string(),
     required_badges: z.array(z.string()),
-    evidence: z.string(),
-    type: z.enum(['Feature', 'Documentation', 'Support', 'Infrastructure']),
+    evidence: z.array(z.string()),
+    type: z.enum([
+      'Feature', 'Documentation', 'Support', 'Infrastructure',
+      'Event', 'Workshop', 'Meetup',
+      'Content', 'Translation', 'Marketing', 'Design',
+      'Research', 'Analysis', 'Strategy',
+      'Governance', 'Operations', 'Moderation',
+      'Education', 'Onboarding', 'Mentoring'
+    ]),
     role: z.enum(['team', 'builder', 'ambassador', 'member']),
     access_level: z.enum(['internal', 'trusted', 'public']),
     experience_level: z.enum(['beginner', 'intermediate', 'advanced']),
-    status: z.string()
+    status: z.string(),
+    priority_score: z.number().min(0).max(100),
+    isNewTask: z.boolean(),
+    taskToUpdateId: z.string().nullable()
   }),
   outputSchema: z.object({
     success: z.boolean(),
     error: z.string().optional()
   }),
   execute: async ({ context }) => {
-    const { error } = await supabase
-      .from('tasks')
-      .insert({
-        community_id: context.communityId,
-        name: context.name,
-        description: context.description,
-        required_badges: context.required_badges,
-        evidence: context.evidence,
-        type: context.type,
-        role: context.role,
-        access_level: context.access_level,
-        experience_level: context.experience_level,
-        status: context.status
-      });
+    const now = new Date().toISOString();
 
-    if (error) {
-      console.error('Failed to save task:', error);
-      return { success: false, error: error.message };
+    // Calculate priority decay based on last update
+    const calculateDecayedPriority = async (taskId: string, currentPriority: number) => {
+      const { data } = await supabase
+        .from('tasks')
+        .select('updated_at, priority_score')
+        .eq('id', taskId)
+        .single();
+      
+      if (data) {
+        const daysSinceUpdate = Math.floor((Date.now() - new Date(data.updated_at).getTime()) / (1000 * 60 * 60 * 24));
+        // Decay 1 point every 3 days of inactivity, but never below 10
+        const decayPoints = Math.floor(daysSinceUpdate / 3);
+        return Math.max(10, currentPriority - decayPoints);
+      }
+      return currentPriority;
+    };
+
+    if (!context.isNewTask && context.taskToUpdateId) {
+      // Calculate decayed priority before applying new update
+      const updatedPriority = await calculateDecayedPriority(context.taskToUpdateId, context.priority_score);
+
+      // Update existing task
+      const { error } = await supabase
+        .from('tasks')
+        .update({
+          name: context.name,
+          description: context.description,
+          required_badges: context.required_badges,
+          evidence: context.evidence,
+          type: context.type,
+          role: context.role,
+          access_level: context.access_level,
+          experience_level: context.experience_level,
+          status: context.status,
+          priority_score: updatedPriority,
+          updated_at: now
+        })
+        .eq('id', context.taskToUpdateId);
+
+      if (error) {
+        console.error('Failed to update task:', error);
+        return { success: false, error: error.message };
+      }
+    } else {
+      // Insert new task
+      const { error } = await supabase
+        .from('tasks')
+        .insert({
+          community_id: context.communityId,
+          name: context.name,
+          description: context.description,
+          required_badges: context.required_badges,
+          evidence: context.evidence,
+          type: context.type,
+          role: context.role,
+          access_level: context.access_level,
+          experience_level: context.experience_level,
+          status: context.status,
+          priority_score: context.priority_score,
+          created_at: now,
+          updated_at: now
+        });
+
+      if (error) {
+        console.error('Failed to save task:', error);
+        return { success: false, error: error.message };
+      }
     }
 
     return { success: true };
   }
 });
-
-export const taskIdentificationTool = createTool({
-  id: 'identify-tasks',
-  description: 'Identify potential tasks from community discussions and save to database',
-  inputSchema: z.object({
-    transcript: z.string(),
-    communityId: z.string().uuid(),
-    existingTasks: z.array(z.object({
-      name: z.string(),
-      description: z.string(),
-    })).optional(),
-  }),
-  outputSchema: z.object({
-    tasks: z.array(z.object({
-      name: z.string(),
-      description: z.string(),
-      required_skills: z.array(z.string()),
-      evidence: z.string(),
-      type: z.enum(['Feature', 'Documentation', 'Support', 'Infrastructure']),
-      requirements: z.object({
-        role: z.enum(['team', 'builder', 'ambassador', 'member']),
-        access_level: z.enum(['internal', 'trusted', 'public']),
-        experience_level: z.enum(['beginner', 'intermediate', 'advanced'])
-      })
-    }))
-  }),
-  execute: async ({ context }) => {
-    const existingTasksContext = context.existingTasks ? `
-Existing tasks (DO NOT recreate these, but if mentioned add to their evidence):
-${context.existingTasks.map(task => `- ${task.name}: ${task.description}`).join('\n')}
-` : '';
-
-    const prompt = `Analyze this chat transcript and identify potential tasks that could help the community.
-
-${existingTasksContext}
-
-For each task, provide:
-1. A clear name (max 20 chars)
-2. A concise description
-3. Required skills
-4. Evidence from the chat that supports creating this task
-5. Task type (Feature/Documentation/Support/Infrastructure)
-6. Requirements including:
-   - role (MUST be one of: team, builder, ambassador, member)
-   - access_level (internal, trusted, public)
-   - experience_level (beginner, intermediate, advanced)
-
-Return the response in this exact JSON format:
-{
-  "tasks": [
-    {
-      "name": "Short Task Name",
-      "description": "Task description",
-      "required_skills": ["skill1", "skill2"],
-      "evidence": "Evidence from chat",
-      "type": "Feature",
-      "requirements": {
-        "role": "member",
-        "access_level": "public",
-        "experience_level": "beginner"
-      }
-    }
-  ]
-}
-
-IMPORTANT: 
-- role MUST be one of: team, builder, ambassador, member
-- name must be 20 characters or less
-- type must be one of: Feature, Documentation, Support, Infrastructure
-- DO NOT recreate existing tasks, instead add new evidence to them
-
-Chat transcript:
-${context.transcript}`;
-
-    const response = await model.invoke([new HumanMessage(prompt)]);
-    const content = typeof response.content === 'string' 
-      ? response.content 
-      : JSON.stringify(response.content);
-
-    console.log('Raw AI response:', content);
-
-    let result;
-    try {
-      const cleaned = content.replace(/```json\n?|```/g, '').trim();
-      console.log('Cleaned response:', cleaned);
-      result = JSON.parse(cleaned);
-      
-      if (!result || !Array.isArray(result.tasks)) {
-        console.error('Invalid response structure:', result);
-        throw new Error('Invalid response structure');
-      }
-    } catch (error) {
-      console.error('Failed to parse AI response:', error);
-      result = { tasks: [] };
-    }
-
-    // Save tasks to Supabase
-    const savedTasks = [];
-    for (const task of result.tasks) {
-      try {
-        console.log('Attempting to save task:', task.name);
-        const { data, error } = await supabase
-          .from('tasks')
-          .insert({
-            name: task.name,
-            description: task.description,
-            required_skills: task.required_skills,
-            evidence: task.evidence,
-            type: task.type,
-            role: task.requirements.role,
-            access_level: task.requirements.access_level,
-            experience_level: task.requirements.experience_level,
-            community_id: context.communityId,
-            status: 'open'
-          })
-          .select()
-          .single();
-
-        if (error) {
-          console.error('Failed to save task:', {
-            taskName: task.name,
-            error: error,
-            details: error.details,
-            message: error.message
-          });
-        } else {
-          console.log('Successfully saved task:', task.name);
-          savedTasks.push(data);
-        }
-      } catch (error) {
-        console.error('Exception while saving task:', {
-          taskName: task.name,
-          error: error
-        });
-      }
-    }
-
-    console.log(`Saved ${savedTasks.length} out of ${result.tasks.length} tasks`);
-    return { tasks: result.tasks };
-  },
-}); 
