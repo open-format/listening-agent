@@ -1,6 +1,6 @@
 import { Workflow, Step } from '@mastra/core/workflows';
 import { z } from 'zod';
-import { fetchTasksTool, saveTaskTool, getCommunityProfileTool, fetchMessagesTool } from '../tools/index.js';
+import { fetchTasksTool, saveTaskTool, getCommunityProfileTool, fetchMessagesTool, getTokensAndBadgesTool } from '../tools/index.js';
 import { identifyTasks } from '../agents/tasks.js';
 
 // Define the workflow
@@ -25,6 +25,7 @@ const getCommunityProfileStep = new Step({
     discord_server_id: z.string().nullable(),
     telegram_server_id: z.string().nullable(),
     github_repos: z.array(z.string()),
+    community_address: z.string(),
     auto_rewards_enabled: z.boolean(),
     reward_actions: z.array(z.object({
       type: z.string(),
@@ -44,6 +45,47 @@ const getCommunityProfileStep = new Step({
       throw new Error('Community profile not found');
     }
     return profile;
+  },
+});
+
+// Add new step after getCommunityProfile
+const getTokensAndBadgesStep = new Step({
+  id: 'getTokensAndBadges',
+  outputSchema: z.object({
+    badges: z.array(z.object({
+      id: z.string(),
+      name: z.string(),
+      description: z.string(),
+      totalAwarded: z.string()
+    })),
+    tokens: z.array(z.object({
+      id: z.string(),
+      name: z.string()
+    }))
+  }),
+  execute: async ({ context }) => {
+    if (!getTokensAndBadgesTool.execute) {
+      throw new Error('Get tokens and badges tool not initialized');
+    }
+
+    if (context.steps.getCommunityProfile.status !== 'success') {
+      throw new Error('Failed to get community profile');
+    }
+
+    const result = await getTokensAndBadgesTool.execute({
+      context: {
+        communityAddress: context.steps.getCommunityProfile.output.community_address
+      }
+    });
+
+    if (!result.success) {
+      throw new Error(result.error || 'Failed to fetch tokens and badges');
+    }
+
+    return {
+      badges: result.badges || [],
+      tokens: result.tokens || []
+    };
   },
 });
 
@@ -150,7 +192,7 @@ const identifyTasksStep = new Step({
     tasks: z.array(z.object({
       name: z.string(),
       description: z.string(),
-      required_skills: z.array(z.string()),
+      required_badges: z.array(z.string()),
       evidence: z.string(),
       type: z.enum(['Feature', 'Documentation', 'Support', 'Infrastructure']),
       requirements: z.object({
@@ -167,10 +209,14 @@ const identifyTasksStep = new Step({
     if (context.steps.fetchTasks.status !== 'success') {
       throw new Error('Failed to fetch existing tasks');
     }
+    if (context.steps.getTokensAndBadges.status !== 'success') {
+      throw new Error('Failed to fetch tokens and badges');
+    }
 
     const tasks = await identifyTasks(
       context.steps.fetchMessages.output.transcript,
-      context.steps.fetchTasks.output.tasks
+      context.steps.fetchTasks.output.tasks,
+      context.steps.getTokensAndBadges.output.badges
     );
 
     // Save tasks to database using saveTaskTool
@@ -185,7 +231,7 @@ const identifyTasksStep = new Step({
               communityId: context.triggerData.communityId,
               name: task.name,
               description: task.description,
-              required_skills: task.required_skills,
+              required_badges: task.required_badges,
               evidence: task.evidence,
               type: task.type,
               role: task.requirements.role,
@@ -204,22 +250,11 @@ const identifyTasksStep = new Step({
   },
 });
 
-// Link the steps together
+// Update workflow chain
 taskWorkflow
   .step(getCommunityProfileStep)
+  .then(getTokensAndBadgesStep)
   .then(fetchMessagesStep)
-  .after(fetchMessagesStep)
-  .step(fetchTasksStep)
-  .after(fetchTasksStep)
-  .step(identifyTasksStep)
+  .then(fetchTasksStep)
+  .then(identifyTasksStep)
   .commit();
-
-/* .step(getCommunityProfileStep)
-  .after(getCommunityProfileStep)
-
-  .step(fetchMessagesStep)
-  .step(fetchTasksStep)
-
-  .after([fetchMessagesStep, fetchTasksStep])
-  .step(identifyTasksStep)
-  .commit(); */
