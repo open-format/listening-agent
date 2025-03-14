@@ -1,10 +1,10 @@
 import { Workflow, Step } from '@mastra/core/workflows';
 import { z } from 'zod';
 import { fetchMessagesTool } from '../tools/getMessages.js';
-import { identifyRewardsTool } from '../tools/rewards.js';
 import { getCommunityProfileTool } from '../tools/communityProfile.js';
 import { getTokensAndBadgesTool } from '../tools/getTokensAndBadges.js';
 import { getWalletAddressTool } from '../tools/getWalletAddress.js';
+import { identifyRewards } from '../agents/rewards.js';
 
 // Define the workflow
 export const rewardsWorkflow = new Workflow({
@@ -167,6 +167,7 @@ const identifyRewardsStep = new Step({
       description: z.string(),
       impact: z.string(),
       evidence: z.string(),
+      rewardId: z.string().max(32),
       suggested_reward: z.object({
         points: z.number(),
         reasoning: z.string()
@@ -174,18 +175,11 @@ const identifyRewardsStep = new Step({
     }))
   }),
   execute: async ({ context }) => {
-    if (!identifyRewardsTool.execute) {
-      throw new Error('Rewards identification tool not initialized');
-    }
     if (context.steps.fetchMessages.status !== 'success') {
       throw new Error('Failed to fetch messages');
     }
 
-    return identifyRewardsTool.execute({
-      context: {
-        transcript: context.steps.fetchMessages.output.transcript,
-      }
-    });
+    return identifyRewards(context.steps.fetchMessages.output.transcript);
   },
 });
 
