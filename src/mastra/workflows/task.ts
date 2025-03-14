@@ -64,28 +64,42 @@ const getTokensAndBadgesStep = new Step({
     }))
   }),
   execute: async ({ context }) => {
-    if (!getTokensAndBadgesTool.execute) {
-      throw new Error('Get tokens and badges tool not initialized');
-    }
-
-    if (context.steps.getCommunityProfile.status !== 'success') {
-      throw new Error('Failed to get community profile');
-    }
-
-    const result = await getTokensAndBadgesTool.execute({
-      context: {
-        communityAddress: context.steps.getCommunityProfile.output.community_address
+    try {
+      if (!getTokensAndBadgesTool.execute) {
+        console.warn('Get tokens and badges tool not initialized');
+        return { badges: [], tokens: [] };
       }
-    });
 
-    if (!result.success) {
-      throw new Error(result.error || 'Failed to fetch tokens and badges');
+      if (context.steps.getCommunityProfile.status !== 'success') {
+        console.warn('Failed to get community profile');
+        return { badges: [], tokens: [] };
+      }
+
+      const communityAddress = context.steps.getCommunityProfile.output.community_address;
+      if (!communityAddress) {
+        console.warn('No community address available');
+        return { badges: [], tokens: [] };
+      }
+
+      const result = await getTokensAndBadgesTool.execute({
+        context: {
+          communityAddress
+        }
+      });
+
+      if (!result?.success) {
+        console.warn('Failed to fetch tokens and badges:', result?.error);
+        return { badges: [], tokens: [] };
+      }
+
+      return {
+        badges: result.badges || [],
+        tokens: result.tokens || []
+      };
+    } catch (error) {
+      console.warn('Error in getTokensAndBadgesStep:', error);
+      return { badges: [], tokens: [] };
     }
-
-    return {
-      badges: result.badges || [],
-      tokens: result.tokens || []
-    };
   },
 });
 
@@ -220,14 +234,16 @@ const identifyTasksStep = new Step({
     if (context.steps.fetchTasks.status !== 'success') {
       throw new Error('Failed to fetch existing tasks');
     }
-    if (context.steps.getTokensAndBadges.status !== 'success') {
-      throw new Error('Failed to fetch tokens and badges');
-    }
+
+    // Don't fail if tokens/badges fetch fails, just pass empty array
+    const availableBadges = context.steps.getTokensAndBadges.status === 'success' 
+      ? context.steps.getTokensAndBadges.output.badges 
+      : [];
 
     const tasks = await identifyTasks(
       context.steps.fetchMessages.output.transcript,
       context.steps.fetchTasks.output.tasks,
-      context.steps.getTokensAndBadges.output.badges
+      availableBadges
     );
 
     // Save tasks to database using saveTaskTool
