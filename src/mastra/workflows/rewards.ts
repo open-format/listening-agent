@@ -1,13 +1,8 @@
 import { Workflow, Step } from '@mastra/core/workflows';
 import { z } from 'zod';
-import { fetchMessagesTool } from '../tools/getMessages.js';
-import { getCommunityProfileTool } from '../tools/communityProfile.js';
-import { getTokensAndBadgesTool } from '../tools/getTokensAndBadges.js';
-import { getWalletAddressTool } from '../tools/getWalletAddress.js';
+import { fetchMessagesTool, getCommunityProfileTool, getTokensAndBadgesTool, getWalletAddressTool, rewardTokenTool, storePendingRewardTool } from '../tools/index.js';
 import { identifyRewards } from '../agents/rewards.js';
-import { rewardTokenTool } from '../tools/rewardToken.js';
 import { ThirdwebStorage } from "@thirdweb-dev/storage";
-import { storePendingRewardTool } from '../tools/storePendingReward.js';
 
 const storage = new ThirdwebStorage({
   secretKey: process.env.THIRDWEB_SECRET,

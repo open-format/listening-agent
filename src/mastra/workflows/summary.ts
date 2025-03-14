@@ -1,9 +1,7 @@
 import { Workflow, Step } from '@mastra/core/workflows';
 import { z } from 'zod';
-import { fetchMessagesTool } from '../tools/getMessages.js';
-import { getCommunityProfileTool } from '../tools/communityProfile.js';
+import { saveSummaryTool, fetchMessagesTool, getCommunityProfileTool } from '../tools/index.js';
 import { generateSummary } from '../agents/summary.js';
-import { saveSummaryTool } from '../tools/saveSummary.js';
 
 // Define the workflow
 export const summaryWorkflow = new Workflow({
