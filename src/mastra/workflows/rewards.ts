@@ -4,6 +4,7 @@ import { fetchMessagesTool } from '../tools/getMessages.js';
 import { identifyRewardsTool } from '../tools/rewards.js';
 import { getCommunityProfileTool } from '../tools/communityProfile.js';
 import { getTokensAndBadgesTool } from '../tools/getTokensAndBadges.js';
+import { getWalletAddressTool } from '../tools/getWalletAddress.js';
 
 // Define the workflow
 export const rewardsWorkflow = new Workflow({
@@ -188,10 +189,75 @@ const identifyRewardsStep = new Step({
   },
 });
 
+// Step 4: Get wallet addresses for contributors
+const getWalletAddressesStep = new Step({
+  id: 'getWalletAddresses',
+  outputSchema: z.object({
+    contributorsWithWallets: z.array(z.object({
+      contributor: z.string(),
+      description: z.string(),
+      impact: z.string(),
+      evidence: z.string(),
+      suggested_reward: z.object({
+        points: z.number(),
+        reasoning: z.string()
+      }),
+      walletAddress: z.string().nullable(),
+      error: z.string().optional()
+    }))
+  }),
+  execute: async ({ context }) => {
+    if (!getWalletAddressTool.execute) {
+      throw new Error('Get wallet address tool not initialized');
+    }
+    const getWalletAddress = getWalletAddressTool.execute!;
+
+    if (context.steps.identifyRewards.status !== 'success') {
+      throw new Error('Failed to identify rewards');
+    }
+
+    const { contributions } = context.steps.identifyRewards.output;
+    const platform = context.triggerData.platform.toLowerCase() as 'discord' | 'telegram';
+
+    // Process each contributor to get their wallet address
+    const contributorsWithWallets = await Promise.all(
+      contributions.map(async (contribution: {
+        contributor: string;
+        description: string;
+        impact: string;
+        evidence: string;
+        suggested_reward: {
+          points: number;
+          reasoning: string;
+        }
+      }) => {
+        const walletInfo = await getWalletAddress({
+          context: {
+            username: contribution.contributor,
+            platform,
+            userId: contribution.contributor // Using username as userId since we don't have actual userId
+          }
+        });
+
+        return {
+          ...contribution,
+          walletAddress: walletInfo.walletAddress,
+          error: walletInfo.error
+        };
+      })
+    );
+
+    return {
+      contributorsWithWallets
+    };
+  }
+});
+
 // Link the steps together
 rewardsWorkflow
   .step(getCommunityProfileStep)
   .then(getTokensAndBadgesStep)
   .then(fetchMessagesStep)
   .then(identifyRewardsStep)
+  .then(getWalletAddressesStep)
   .commit(); 
