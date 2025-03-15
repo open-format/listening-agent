@@ -11,54 +11,47 @@ interface Badge {
 export const taskAgent = new Agent({
   name: "task-identifier",
   instructions: `You are a task identification agent that analyzes community discussions to identify potential tasks and improvements.
-  
-  When analyzing transcripts, focus on all types of community contributions:
-  
-  Technical Value:
-  - Feature development and improvements
-  - Documentation and guides
-  - Technical support and troubleshooting
-  - Infrastructure and tooling
-  
-  Community Building:
-  - Event organization and hosting
-  - Workshop facilitation
-  - Meetup coordination
-  - Community gatherings
-  
-  Content & Marketing:
-  - Content creation (articles, videos, podcasts)
-  - Translations and localization
-  - Marketing campaigns and promotion
-  - Visual design and branding
-  
-  Research & Strategy:
-  - Community research and surveys
-  - Data analysis and insights
-  - Strategic planning and initiatives
-  
-  Governance & Operations:
-  - Governance proposals and voting
-  - Operational improvements
-  - Community moderation
-  
-  Education & Growth:
-  - Educational content and courses
-  - Onboarding new members
-  - Mentoring and guidance
-  
-  For each task:
-  - Create a clear, concise name
-  - Provide detailed description
-  - Identify required badges based on the badge list provided
-  - Include supporting evidence (message IDs)
-  - Determine appropriate access levels and requirements
-  
-  When selecting required badges:
-  - Only use badges from the provided list
-  - Choose badges that demonstrate the skills or achievements needed for the task
-  - Consider the badge descriptions to understand their significance
-  - Don't require badges unless they are truly relevant to the task`,
+
+Your role is to:
+1. Identify valuable tasks that could benefit the community
+2. Ensure tasks are well-defined and actionable
+3. Consider both technical and non-technical contributions
+4. Balance urgency with long-term strategic value
+5. Use community examples as guidance when available
+
+Focus on these contribution categories:
+
+Technical:
+- Feature development
+- Documentation
+- Technical support
+- Infrastructure improvements
+
+Community:
+- Events and workshops
+- Community building
+- Meetups and gatherings
+- Member engagement
+
+Content:
+- Educational content
+- Marketing materials
+- Translations
+- Design work
+
+Strategy:
+- Research and analysis
+- Planning initiatives
+- Process improvements
+- Community surveys
+
+Core principles:
+- Tasks should be clear and achievable
+- Evidence should link directly to community discussions
+- Required badges should match task requirements
+- Scoring should be consistent and justified
+- Similar tasks should be merged, not duplicated
+- Community examples should guide task structure`,
   model: openai("gpt-4o"),
 });
 
@@ -66,7 +59,18 @@ export const taskAgent = new Agent({
 export async function identifyTasks(
   transcript: string, 
   existingTasks: Array<{ id: string; name: string; description: string }> = [],
-  availableBadges: Badge[] = []
+  availableBadges: Badge[] = [],
+  exampleTasks: Array<{
+    name: string;
+    description: string;
+    type: string;
+    task_scope: string;
+    urgency_score: number;
+    impact_score: number;
+    priority_score: number;
+    priority_reasoning: string;
+    reward_points: number;
+  }> = []
 ) {
   const existingTasksContext = existingTasks.length > 0 
     ? `\nExisting tasks (DO NOT recreate these, but if mentioned add to their evidence):\n${existingTasks.map(task => `- ${task.name} (ID: ${task.id}): ${task.description}`).join('\n')}`
@@ -78,7 +82,22 @@ export async function identifyTasks(
       ).join('\n')}`
     : '\nNo badges available - leave required_badges empty';
 
-  const prompt = `Analyze this chat transcript and identify potential tasks that could help the community.${existingTasksContext}${badgesContext}
+  const examplesContext = exampleTasks.length > 0
+    ? `\nExample tasks for this community (use these as a reference for scoring and structure):\n${exampleTasks.map(task => 
+        `Example Task:
+        - Name: ${task.name}
+        - Description: ${task.description}
+        - Type: ${task.type}
+        - Scope: ${task.task_scope}
+        - Urgency Score: ${task.urgency_score}
+        - Impact Score: ${task.impact_score}
+        - Priority Score: ${task.priority_score}
+        - Priority Reasoning: ${task.priority_reasoning}
+        - Reward Points: ${task.reward_points}`
+      ).join('\n\n')}`
+    : '';
+
+  const prompt = `Analyze this chat transcript and identify potential tasks that could help the community.${existingTasksContext}${badgesContext}${examplesContext}
 
 For each task, provide:
 1. A clear name (max 20 chars)
@@ -91,17 +110,20 @@ For each task, provide:
    - Content: Content, Translation, Marketing, Design
    - Research: Research, Analysis, Strategy
    - Governance: Governance, Operations, Moderation
-   - Education: Education, Onboarding, Mentoring)
-6. Priority score (0-100) based on:
-   - Urgency (time-sensitive tasks score higher)
-   - Impact (number of people affected)
-   - Frequency (how often it's mentioned)
-   - Evidence strength (more supporting messages = higher score)
-   - Community demand (multiple people requesting/supporting)
-7. Requirements including:
-   - role (MUST be one of: team, builder, ambassador, member)
-   - access_level (internal, trusted, public)
-   - experience_level (beginner, intermediate, advanced)
+   - Education: Education, Onboarding, Mentoring
+   - Business Growth: Growth Opportunities, Community Building, Ambassador)
+6. Task scope (MUST be one of):
+   - community: Tasks that can be completed by community members
+   - internal: Tasks that require team access or internal knowledge
+7. Scoring (all scores must be 0-100):
+   - urgency_score: Time sensitivity and blocking nature
+   - impact_score: Community benefit and strategic value
+   - priority_score: Calculated from urgency and impact
+   - priority_reasoning: Clear explanation of the scores
+8. Reward points: Points awarded for task completion
+9. Task identification:
+   - isNewTask: true if this is a new task
+   - taskToUpdateId: ID of existing task if this is an update (null if new)
 
 Return the response in this exact JSON format:
 {
@@ -155,27 +177,30 @@ Scoring Guidelines:
    - Scores above 75 should be rare and justify critical nature
 
 4. Reward Points:
+    In general you should use the examples provided to you as a reference for the reward points.
+    Based on the priority, impact and urgency scores of the example tasks you should scale the reward points accordingly.
+    Don't copy the exact reward_points values, but they should heavily influence the reward points you set.
+    Generally the more urgent, impactful and complex the task the higher the reward points.
+    If there are no or insufficient examples for you to use, use the following scoring system:
    - Simple tasks (1-2 hours): 100-300 points
    - Small tasks (2-4 hours): 300-500 points
    - Medium tasks (4-8 hours): 500-1000 points
    - Large tasks (multiple days): 1000-2000 points
-   - Complex projects (weeks+): 2000-3000 points
-   - Adjust based on:
-     * Required expertise (-25% to +25%)
-     * Strategic importance (+10% to +30%)
-     * Time sensitivity (+10% to +20%)
+
 
 Task Scope:
 - community: Tasks that can be completed by community members
 - internal: Tasks that require team access or internal knowledge
 
 IMPORTANT: 
-- role MUST be one of: team, builder, ambassador, member
 - name must be 20 characters or less
 - type must be one of the specified task types
+- task_scope must be either 'community' or 'internal'
 - required_badges must ONLY use IDs from the available badges list
 - evidence must be an array of message IDs extracted from the transcript
 - Include ALL relevant message IDs that support the task
+- All scores (urgency, impact, priority) must be between 0-100
+- Priority score must follow the formula: (Impact * 0.6) + (Urgency * 0.4)
 - Priority score must be justified with clear reasoning
 - DO NOT recreate existing tasks, instead add new evidence to them
 - When a task is mentioned again, this should influence its priority score
@@ -187,9 +212,11 @@ IMPORTANT:
 - When updating an existing task, use its ID (provided in parentheses) as taskToUpdateId
 - taskToUpdateId must be the exact ID of the task being updated, not its name
 - Set isNewTask to false when providing a taskToUpdateId
-- Be conservative with scores - most tasks should be medium priority
+- Be conservative with scores - most tasks should be medium priority (30-60 range)
 - Only use high scores (75+) for genuinely critical/blocking issues
 - Reward points should reflect actual effort required, not perceived importance
+- Use example tasks (if provided) as reference for appropriate scoring and reward points
+- Follow the reward points guidelines based on estimated completion time
 - Consider the community's typical point values when setting rewards
 
 Chat transcript:

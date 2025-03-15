@@ -147,3 +147,45 @@ export const saveTaskTool = createTool({
     return { success: true };
   }
 });
+
+export const fetchExampleTasksTool = createTool({
+  id: 'fetch-example-tasks',
+  description: 'Fetch example tasks for a specific community to guide task identification',
+  inputSchema: z.object({
+    communityId: z.string().uuid(),
+  }),
+  outputSchema: z.object({
+    examples: z.array(z.object({
+      name: z.string(),
+      description: z.string(),
+      type: z.enum([
+        'Feature', 'Documentation', 'Support', 'Infrastructure',
+        'Event', 'Workshop', 'Meetup',
+        'Content', 'Translation', 'Marketing', 'Design',
+        'Research', 'Analysis', 'Strategy',
+        'Governance', 'Operations', 'Moderation',
+        'Education', 'Onboarding', 'Mentoring'
+      ]),
+      task_scope: z.enum(['community', 'internal']),
+      urgency_score: z.number().min(0).max(100),
+      impact_score: z.number().min(0).max(100),
+      priority_score: z.number().min(0).max(100),
+      priority_reasoning: z.string(),
+      reward_points: z.number().min(0)
+    }))
+  }),
+  execute: async ({ context }) => {
+    const { data, error } = await supabase
+      .from('example_tasks')
+      .select('*')
+      .eq('community_id', context.communityId)
+      .limit(5);
+
+    if (error) {
+      console.error('Failed to fetch example tasks:', error);
+      return { examples: [] };
+    }
+
+    return { examples: data || [] };
+  }
+});

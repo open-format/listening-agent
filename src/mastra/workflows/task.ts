@@ -1,6 +1,6 @@
 import { Workflow, Step } from '@mastra/core/workflows';
 import { z } from 'zod';
-import { fetchTasksTool, saveTaskTool, getCommunityProfileTool, fetchMessagesTool, getTokensAndBadgesTool } from '../tools/index.js';
+import { fetchTasksTool, saveTaskTool, getCommunityProfileTool, fetchMessagesTool, getTokensAndBadgesTool, fetchExampleTasksTool } from '../tools/index.js';
 import { identifyTasks } from '../agents/tasks.js';
 
 // Define the workflow
@@ -101,6 +101,43 @@ const getTokensAndBadgesStep = new Step({
       return { badges: [], tokens: [] };
     }
   },
+});
+
+// Add new step after getCommunityProfile
+const getExampleTasksStep = new Step({
+  id: 'getExampleTasks',
+  outputSchema: z.object({
+    examples: z.array(z.object({
+      name: z.string(),
+      description: z.string(),
+      type: z.string(),
+      task_scope: z.string(),
+      urgency_score: z.number(),
+      impact_score: z.number(),
+      priority_score: z.number(),
+      priority_reasoning: z.string(),
+      reward_points: z.number()
+    }))
+  }),
+  execute: async ({ context }) => {
+    try {
+      if (!fetchExampleTasksTool.execute) {
+        console.warn('Fetch example tasks tool not initialized');
+        return { examples: [] };
+      }
+
+      const result = await fetchExampleTasksTool.execute({
+        context: {
+          communityId: context.triggerData.communityId
+        }
+      });
+
+      return { examples: result.examples };
+    } catch (error) {
+      console.warn('Error fetching example tasks:', error);
+      return { examples: [] };
+    }
+  }
 });
 
 // Step 2: Fetch messages using profile data
@@ -234,15 +271,19 @@ const identifyTasksStep = new Step({
       throw new Error('Failed to fetch existing tasks');
     }
 
-    // Don't fail if tokens/badges fetch fails, just pass empty array
     const availableBadges = context.steps.getTokensAndBadges.status === 'success' 
       ? context.steps.getTokensAndBadges.output.badges 
+      : [];
+
+    const exampleTasks = context.steps.getExampleTasks.status === 'success'
+      ? context.steps.getExampleTasks.output.examples
       : [];
 
     const tasks = await identifyTasks(
       context.steps.fetchMessages.output.transcript,
       context.steps.fetchTasks.output.tasks,
-      availableBadges
+      availableBadges,
+      exampleTasks
     );
 
     // Save tasks to database using saveTaskTool
@@ -285,6 +326,7 @@ const identifyTasksStep = new Step({
 taskWorkflow
   .step(getCommunityProfileStep)
   .then(getTokensAndBadgesStep)
+  .then(getExampleTasksStep)
   .then(fetchMessagesStep)
   .then(fetchTasksStep)
   .then(identifyTasksStep)
