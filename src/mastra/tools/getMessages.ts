@@ -9,12 +9,16 @@ const supabase = createClient(
 
 export const fetchMessagesTool = createTool({
   id: 'fetch-messages',
-  description: 'Fetch messages from Supabase for a specific platform and server',
+  description: 'Fetch messages from Supabase for a specific platform and server, optionally filtered by channels',
   inputSchema: z.object({
     startDate: z.string(),
     endDate: z.string(),
     platform: z.enum(['discord', 'telegram']),
     serverId: z.string(),
+    channelIds: z.union([
+      z.string(),
+      z.array(z.string())
+    ]).optional(),
   }),
   outputSchema: z.object({
     transcript: z.string(),
@@ -23,10 +27,35 @@ export const fetchMessagesTool = createTool({
     activePeriodsCount: z.number(),
   }),
   execute: async ({ context }) => {
-
     // Parse the date strings into Date objects
     const startDate = new Date(context.startDate);
     const endDate = new Date(context.endDate);
+
+    // Ensure channelIds is properly parsed
+    let channelIds;
+    
+    if (context.channelIds) {
+      // If it's already an array, use it
+      if (Array.isArray(context.channelIds)) {
+        channelIds = context.channelIds.filter(id => id && typeof id === 'string');
+      } 
+      // If it's a string that looks like a JSON array, parse it
+      else if (typeof context.channelIds === 'string' && 
+               context.channelIds.trim().startsWith('[') && 
+               context.channelIds.trim().endsWith(']')) {
+        try {
+          const parsed = JSON.parse(context.channelIds);
+          channelIds = Array.isArray(parsed) ? parsed : [context.channelIds];
+        } catch (e) {
+          console.warn('Failed to parse channelIds as JSON:', e);
+          channelIds = [context.channelIds];
+        }
+      }
+      // Otherwise treat as a single channel ID
+      else if (typeof context.channelIds === 'string') {
+        channelIds = [context.channelIds];
+      }
+    }
 
     // Fetch messages based on platform
     let query = supabase
@@ -37,13 +66,49 @@ export const fetchMessagesTool = createTool({
       .lte('createdAt', endDate.toISOString());
 
     if (context.platform === 'discord') {
-      query = query
-        .contains('content', { source: 'discord' })
-        .filter('content->>url', 'like', `%/channels/${context.serverId}/%`);
+      query = query.contains('content', { source: 'discord' });
+      
+      if (channelIds && channelIds.length > 0) {
+        // Create an array of channel URL patterns to match
+        const channelPatterns = channelIds.map(channelId => 
+          `/channels/${context.serverId}/${channelId}/`
+        );
+        
+        // Build OR conditions for each channel pattern
+        const channelFilters = channelPatterns.map(pattern => 
+          `content->>url.like.%${pattern}%`
+        ).join(',');
+        
+        query = query.or(channelFilters);
+      } else {
+        // If no specific channels, get all messages from the server
+        query = query.filter('content->>url', 'like', `%/channels/${context.serverId}/%`);
+      }
     } else {
-      query = query
-        .contains('content', { source: 'telegram' })
-        .or(`content->server_id.eq.${context.serverId},content->>server_id.eq.${context.serverId}`);
+      // Telegram platform
+      query = query.contains('content', { source: 'telegram' });
+      
+      if (channelIds && channelIds.length > 0) {
+        // For Telegram, we need to filter by thread_id
+        // First, ensure we're looking at the right server
+        query = query.filter('content->>server_id', 'eq', context.serverId);
+        
+        // Then build a filter for each thread ID
+        let threadFilters = [];
+        for (const threadId of channelIds) {
+          // Add a filter for this specific thread ID
+          threadFilters.push(`content->>thread_id.eq.${threadId}`);
+        }
+        
+        // Combine the thread filters with OR
+        if (threadFilters.length > 0) {
+          const threadFilterString = threadFilters.join(',');
+          query = query.or(threadFilterString);
+        }
+      } else {
+        // If no specific channels, get all messages from the server
+        query = query.filter('content->>server_id', 'eq', context.serverId);
+      }
     }
 
     try {
@@ -93,9 +158,16 @@ export const fetchMessagesTool = createTool({
             datetime = 'Unknown Date';
           }
           const platform = context.platform;
-          const channelInfo = context.platform === 'discord' 
-            ? `#${memory.content.url.split('/')[5]}` 
-            : `${memory.content.thread_id || 'Unknown Channel'}`;
+          
+          // Enhanced channel information
+          let channelInfo;
+          if (context.platform === 'discord') {
+            const urlParts = memory.content.url.split('/');
+            const channelId = urlParts[5];
+            channelInfo = `#${channelId}`;
+          } else {
+            channelInfo = memory.content.thread_id ? `Thread ${memory.content.thread_id}` : 'Main Channel';
+          }
           
           return `[${datetime}] ${platform}/${channelInfo} ${username}: ${memory.content.text} (messageId: ${memory.id})`;
         })

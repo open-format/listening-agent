@@ -11,6 +11,25 @@ export const summaryWorkflow = new Workflow({
     endDate: z.date(),
     communityId: z.string().uuid(),
     platform: z.enum(['discord', 'telegram']),
+    // Accept a string for channelIds (can be a single ID or JSON array)
+    channelIds: z.string().optional().transform(val => {
+      if (!val) return undefined;
+      
+      // If it's a string that looks like a JSON array, try to parse it
+      if (val.trim().startsWith('[') && val.trim().endsWith(']')) {
+        try {
+          const parsed = JSON.parse(val);
+          return Array.isArray(parsed) ? parsed : [val];
+        } catch (e) {
+          console.warn('Failed to parse channelIds as JSON:', e);
+          // If parsing fails, use as a single value
+          return [val];
+        }
+      }
+      
+      // Otherwise treat as a single channel ID
+      return [val];
+    })
   }),
 });
 
@@ -88,12 +107,26 @@ const fetchMessagesStep = new Step({
         ? context.triggerData.endDate.toISOString()
         : context.triggerData.endDate;
 
+      // Ensure channelIds is properly parsed
+      let channelIds = context.triggerData.channelIds;
+      
+      // If channelIds is a string that looks like a JSON array, parse it
+      if (typeof channelIds === 'string' && channelIds.trim().startsWith('[') && channelIds.trim().endsWith(']')) {
+        try {
+          channelIds = JSON.parse(channelIds);
+        } catch (e) {
+          console.warn('Failed to parse channelIds as JSON:', e);
+          // Keep as is if parsing fails
+        }
+      }
+
       const result = await fetchMessagesTool.execute({
         context: {
           startDate,
           endDate,
           platform: context.triggerData.platform.toLowerCase(),
-          serverId: serverId
+          serverId: serverId,
+          channelIds: channelIds
         }
       });
 
