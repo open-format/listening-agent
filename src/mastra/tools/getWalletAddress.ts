@@ -3,7 +3,6 @@ import { z } from 'zod';
 import { PrivyClient } from "@privy-io/server-auth";
 
 interface SocialAccount {
-  userId: string;
   username: string;
   platform: "telegram" | "discord";
 }
@@ -26,7 +25,6 @@ export const getWalletAddressTool = createTool({
     inputSchema: z.object({
       username: z.string(),
       platform: z.enum(['discord', 'telegram']),
-      userId: z.string()
     }),
     outputSchema: z.object({
       username: z.string(),
@@ -36,7 +34,6 @@ export const getWalletAddressTool = createTool({
     }),
     execute: async ({ context }) => {
       return getSocialAccountWallet({
-        userId: context.userId,
         username: context.username,
         platform: context.platform
       });

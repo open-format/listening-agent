@@ -230,8 +230,7 @@ const getWalletAddressesStep = new Step({
         const walletInfo = await getWalletAddress({
           context: {
             username: contribution.contributor,
-            platform,
-            userId: contribution.contributor // Using username as userId since we don't have actual userId
+            platform: platform
           }
         });
 
