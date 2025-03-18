@@ -5,25 +5,26 @@ export const rewardsAgent = new Agent({
   name: "community-rewards",
   instructions: `You are a community rewards analyzer that identifies valuable contributions and suggests appropriate rewards.
   
-  When analyzing transcripts, focus on:
-  1. Technical contributions (code, documentation, tools)
-  2. Community support (helping others, answering questions)
-  3. Content creation (guides, tutorials, explanations)
-  4. Community building (organizing events, fostering discussions)
-  5. Bug reports and feedback
+  You can analyze both full conversation transcripts and individual messages to:
+  1. Identify valuable contributions
+  2. Assess their impact and value
+  3. Suggest appropriate reward points based on contribution quality
   
-  For each contribution:
-  - Clearly identify the contributor
-  - Describe their specific contribution
-  - Explain the impact on the community
-  - Collect ALL relevant message IDs as evidence
-  - Suggest appropriate reward points (10-1000) based on value and impact`,
+  When evaluating contributions, consider:
+  - Technical value (code, documentation, tools)
+  - Community support (helping others, answering questions)
+  - Content creation (guides, tutorials, explanations)
+  - Community building (organizing events, fostering discussions)
+  - Innovation and creative problem-solving
+  - Knowledge sharing and expertise
+  
+  Always provide clear reasoning for your reward suggestions, focusing on objective metrics for contribution value.`,
   model: openai("gpt-4o"),
 });
 
-// Function to identify rewards using the agent
+// Function to identify rewards from a transcript
 export async function identifyRewards(transcript: string) {
-  const prompt = `Analyze this Discord chat transcript and identify valuable community contributions that deserve recognition and rewards.
+  const prompt = `Analyze this chat transcript and identify valuable community contributions that deserve recognition and rewards.
 
 For each meaningful contribution, provide:
 1. Who made the contribution
@@ -67,4 +68,53 @@ ${transcript}`;
   const contributions = JSON.parse(result.text.replace(/```json\n?|```/g, '').trim());
   
   return contributions;
+}
+
+// New function to evaluate a single message
+export async function evaluateMessage(messageText: string) {
+  const prompt = `Evaluate this individual message to determine if it deserves a reward in the community.
+
+Message:
+${messageText}
+
+If this message contains a valuable contribution, provide:
+1. What this contribution is
+2. The impact on the community
+3. A short kebab-case rewardId that describes the contribution (max 32 chars)
+4. Suggested reward points (10-1000) based on:
+   - Contribution value and impact
+   - Expertise demonstrated
+   - Community benefit
+   - Technical complexity
+
+Return the response in this exact JSON format:
+{
+  "contributions": [
+    {
+      "description": "Clear description of contribution",
+      "impact": "Specific impact on community",
+      "rewardId": "helpful-technical-answer",
+      "suggested_reward": {
+        "points": 50,
+        "reasoning": "Detailed explanation of reward suggestion"
+      }
+    }
+  ]
+}
+
+If the message does NOT contain a valuable contribution, return an empty contributions array:
+{
+  "contributions": []
+}
+
+Remember:
+- rewardId must be in kebab-case (lowercase with hyphens)
+- rewardId should be descriptive but under 32 characters
+- Be thorough but selective - only reward genuinely valuable contributions
+- Consider context and ensure the message truly adds value`;
+
+  const result = await rewardsAgent.generate(prompt);
+  const evaluation = JSON.parse(result.text.replace(/```json\n?|```/g, '').trim());
+  
+  return evaluation;
 } 
