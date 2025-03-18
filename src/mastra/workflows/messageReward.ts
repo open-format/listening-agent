@@ -6,10 +6,28 @@ import {
   rewardTokenTool, 
   getWalletAddressTool,
   storePendingRewardTool,
-  getTokensAndBadgesTool
+  getTokensAndBadgesTool,
+  getRewardsTool
 } from '../tools/index.js';
 import { evaluateMessage } from '../agents/rewards.js';
 import { ThirdwebStorage } from "@thirdweb-dev/storage";
+
+// Define Reward interface
+interface Reward {
+  rewardId: string;
+  userId: string;
+  type: 'badge' | 'token';
+  badgeName?: string;
+  tokenName?: string;
+  tokenAmount?: string;
+  name?: string;
+  description?: string;
+  impact?: string;
+  reasoning?: string;
+  image?: string;
+  minimum_reward_points?: number;
+  maximum_reward_points?: number;
+}
 
 const storage = new ThirdwebStorage({
   secretKey: process.env.THIRDWEB_SECRET,
@@ -158,6 +176,58 @@ const getTokensAndBadgesStep = new Step({
   },
 });
 
+// New Step: Get recent rewards
+const getRewardsStep = new Step({
+  id: 'getRewards',
+  outputSchema: z.object({
+    success: z.boolean(),
+    rewards: z.array(z.object({
+      rewardId: z.string(),
+      userId: z.string(),
+      type: z.enum(['badge', 'token']),
+      badgeName: z.string().optional(),
+      tokenName: z.string().optional(),
+      tokenAmount: z.string().optional(),
+      name: z.string().optional(),
+      description: z.string().optional(),
+      impact: z.string().optional(),
+      reasoning: z.string().optional(),
+      image: z.string().optional(),
+      minimum_reward_points: z.number().optional(),
+      maximum_reward_points: z.number().optional(),
+    })),
+    error: z.string().optional(),
+  }),
+  execute: async ({ context }) => {
+    if (!getRewardsTool.execute) {
+      throw new Error('Get rewards tool not initialized');
+    }
+    
+    if (context.steps.getCommunityProfile.status !== 'success') {
+      throw new Error('Failed to get community profile');
+    }
+    
+    const profile = context.steps.getCommunityProfile.output;
+    
+    try {
+      const rewardsResult = await getRewardsTool.execute({
+        context: {
+          communityAddress: profile.community_address
+        }
+      });
+      
+      return rewardsResult;
+    } catch (error) {
+      console.warn('Error fetching rewards:', error);
+      return {
+        success: false,
+        rewards: [],
+        error: error instanceof Error ? error.message : 'Unknown error'
+      };
+    }
+  }
+});
+
 // Step 4: Evaluate message
 const evaluateMessageStep = new Step({
   id: 'evaluateMessage',
@@ -188,11 +258,37 @@ const evaluateMessageStep = new Step({
     const minPoints = profile.minimum_reward_points || 10;
     const maxPoints = profile.maximum_reward_points || 1000;
     
-    // Pass min/max points along with message text
+    // Format reward examples from the dedicated step
+    let rewardExamples = "";
+    if (context.steps.getRewards.status === 'success' && 
+        context.steps.getRewards.output.success && 
+        context.steps.getRewards.output.rewards.length > 0) {
+      
+      // Filter to only token rewards and format them as examples
+      const tokenRewards = context.steps.getRewards.output.rewards
+        .filter((reward: Reward) => reward.type === 'token')
+        .slice(0, 10);
+      
+      if (tokenRewards.length > 0) {
+        rewardExamples = "\n\nRecent reward examples from this community:\n" + 
+          tokenRewards.map((reward: Reward) => {
+            let example = `Reward ID: ${reward.rewardId}\nPoints: ${reward.tokenAmount}`;
+            if (reward.description) example += `\nDescription: ${reward.description}`;
+            if (reward.impact) example += `\nImpact: ${reward.impact}`;
+            if (reward.reasoning) example += `\nReasoning: ${reward.reasoning}`;
+            if (reward.minimum_reward_points) example += `\nAt the point this reward was given the minimum available reward points was: ${reward.minimum_reward_points}`;
+            if (reward.maximum_reward_points) example += `\nAt the point this reward was given the maximum available reward points was: ${reward.maximum_reward_points}`;
+            return example;
+          }).join("\n\n");
+      }
+    }
+    
+    // Pass message text, min/max points, and reward examples to the agent
     return evaluateMessage(
       message.content.text,
       minPoints,
-      maxPoints
+      maxPoints,
+      rewardExamples
     );
   },
 });
@@ -282,7 +378,9 @@ const processRewardStep = new Step({
         impact: contribution.impact,
         reasoning: contribution.suggested_reward.reasoning,
         platform: context.triggerData.platform,
-        auto_rewards: profile.auto_rewards_enabled
+        auto_rewards: profile.auto_rewards_enabled,
+        minimum_reward_points: profile.minimum_reward_points,
+        maximum_reward_points: profile.maximum_reward_points
       });
       
       // Branch 1: Store as pending if no wallet address
@@ -375,11 +473,12 @@ const processRewardStep = new Step({
   }
 });
 
-// Link the steps together
+
 messageRewardWorkflow
   .step(fetchMessageStep)
   .then(getCommunityProfileStep)
   .then(getTokensAndBadgesStep)
+  .then(getRewardsStep)
   .then(evaluateMessageStep)
   .then(getWalletAddressStep)
   .then(processRewardStep)

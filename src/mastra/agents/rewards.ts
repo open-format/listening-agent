@@ -74,7 +74,8 @@ ${transcript}`;
 export async function evaluateMessage(
   messageText: string,
   minRewardPoints: number = 10,
-  maxRewardPoints: number = 1000
+  maxRewardPoints: number = 1000,
+  rewardExamples: string = ""
 ) {
   const prompt = `Evaluate this individual message to determine if it deserves a reward in the community.
 
@@ -90,6 +91,9 @@ If this message contains a valuable contribution, provide:
    - Expertise demonstrated
    - Community benefit
    - Technical complexity
+   
+Here are some recent reward examples from this community, use them as benchmarks to maintain consistency:
+${rewardExamples}
 
 Return the response in this exact JSON format:
 {
@@ -99,7 +103,7 @@ Return the response in this exact JSON format:
       "impact": "Specific impact on community",
       "rewardId": "helpful-technical-answer",
       "suggested_reward": {
-        "points": ${maxRewardPoints*0.5},
+        "points": ${Math.round((minRewardPoints + maxRewardPoints) / 2)},
         "reasoning": "Detailed explanation of reward suggestion"
       }
     }
@@ -117,9 +121,22 @@ Remember:
 - Be thorough but selective - only reward valuable contributions
 - Consider context and ensure the message adds value
 - For messages that are not valuable, return an empty array
-- For messages that are slightly valuable, return ${minRewardPoints} points
-- For messages that are extremely valuable, return ${maxRewardPoints} points
-- For messages that are quite valuable, return a number between ${minRewardPoints} and ${maxRewardPoints}`;
+
+IMPORTANT SCORING GUIDELINES:
+- Calibrate your rewards based on recent community examples when available
+- Similar contributions should receive similar point values
+- Use recent examples as benchmarks to maintain consistency 
+- Pay attention to the reasoning in previous rewards to understand the community's values
+- For messages with similar impact to past examples, assign similar point values
+- For messages that are slightly valuable, use lower points (closer to ${minRewardPoints})
+- For messages that are extremely valuable, use higher points (closer to ${maxRewardPoints})
+- For messages that are quite valuable, return a number between ${minRewardPoints} and ${maxRewardPoints}
+- If you see a pattern in how different types of contributions are rewarded, follow it`;
+
+  // Log the prompt being sent to the agent
+  console.log("\n==== MESSAGE EVALUATION PROMPT ====");
+  console.log(prompt);
+  console.log("==== END OF PROMPT ====\n");
 
   const result = await rewardsAgent.generate(prompt);
   const evaluation = JSON.parse(result.text.replace(/```json\n?|```/g, '').trim());
