@@ -35,7 +35,9 @@ export const getCommunityProfileTool = createTool({
     })),
     created_at: z.string().datetime(),
     updated_at: z.string().datetime(),
-    community_address: z.string()
+    community_address: z.string(),
+    minimum_reward_points: z.number().default(10),
+    maximum_reward_points: z.number().default(1000)
   }).nullable(),
   execute: async ({ context }) => {
     try {

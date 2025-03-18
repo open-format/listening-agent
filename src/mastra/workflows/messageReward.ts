@@ -86,7 +86,9 @@ const getCommunityProfileStep = new Step({
       points: z.number()
     })),
     created_at: z.string(),
-    updated_at: z.string()
+    updated_at: z.string(),
+    minimum_reward_points: z.number().default(10),
+    maximum_reward_points: z.number().default(1000)
   }),
   execute: async ({ context }) => {
     if (!getCommunityProfileTool.execute) {
@@ -175,10 +177,23 @@ const evaluateMessageStep = new Step({
       throw new Error('Failed to fetch message');
     }
     
-    const message = context.steps.fetchMessage.output;
+    if (context.steps.getCommunityProfile.status !== 'success') {
+      throw new Error('Failed to get community profile');
+    }
     
-    // Only pass the message text content
-    return evaluateMessage(message.content.text);
+    const message = context.steps.fetchMessage.output;
+    const profile = context.steps.getCommunityProfile.output;
+    
+    // Get community min/max reward points settings
+    const minPoints = profile.minimum_reward_points || 10;
+    const maxPoints = profile.maximum_reward_points || 1000;
+    
+    // Pass min/max points along with message text
+    return evaluateMessage(
+      message.content.text,
+      minPoints,
+      maxPoints
+    );
   },
 });
 

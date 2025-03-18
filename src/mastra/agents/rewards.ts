@@ -71,7 +71,11 @@ ${transcript}`;
 }
 
 // New function to evaluate a single message
-export async function evaluateMessage(messageText: string) {
+export async function evaluateMessage(
+  messageText: string,
+  minRewardPoints: number = 10,
+  maxRewardPoints: number = 1000
+) {
   const prompt = `Evaluate this individual message to determine if it deserves a reward in the community.
 
 Message:
@@ -81,7 +85,7 @@ If this message contains a valuable contribution, provide:
 1. What this contribution is
 2. The impact on the community
 3. A short kebab-case rewardId that describes the contribution (max 32 chars)
-4. Suggested reward points (10-1000) based on:
+4. Suggested reward points (${minRewardPoints}-${maxRewardPoints}) based on:
    - Contribution value and impact
    - Expertise demonstrated
    - Community benefit
@@ -95,7 +99,7 @@ Return the response in this exact JSON format:
       "impact": "Specific impact on community",
       "rewardId": "helpful-technical-answer",
       "suggested_reward": {
-        "points": 50,
+        "points": ${maxRewardPoints*0.5},
         "reasoning": "Detailed explanation of reward suggestion"
       }
     }
@@ -110,8 +114,12 @@ If the message does NOT contain a valuable contribution, return an empty contrib
 Remember:
 - rewardId must be in kebab-case (lowercase with hyphens)
 - rewardId should be descriptive but under 32 characters
-- Be thorough but selective - only reward genuinely valuable contributions
-- Consider context and ensure the message truly adds value`;
+- Be thorough but selective - only reward valuable contributions
+- Consider context and ensure the message adds value
+- For messages that are not valuable, return an empty array
+- For messages that are slightly valuable, return ${minRewardPoints} points
+- For messages that are extremely valuable, return ${maxRewardPoints} points
+- For messages that are quite valuable, return a number between ${minRewardPoints} and ${maxRewardPoints}`;
 
   const result = await rewardsAgent.generate(prompt);
   const evaluation = JSON.parse(result.text.replace(/```json\n?|```/g, '').trim());
